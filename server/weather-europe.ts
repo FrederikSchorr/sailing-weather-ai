@@ -5,6 +5,29 @@ import type { AnalysisSources } from "./analysis-store.js";
 
 const imageCache = new Map<string, { imageBase64: string; fetchedAt: number }>();
 const IMAGE_CACHE_TTL = 3 * 3600 * 1000;
+const METEONEWS_CACHE_TTL = 3 * 3600 * 1000;
+
+interface MeteonewsCacheEntry {
+  text: string;
+  preprocessed?: string;
+  fetchedAt: number;
+}
+
+let meteonewsCache: MeteonewsCacheEntry | null = null;
+
+function logEuropeTiming(
+  source: string,
+  phase: string,
+  startedAt: number,
+  cacheHit: boolean,
+): void {
+  console.log("[weather-europe]", JSON.stringify({
+    source,
+    phase,
+    durationMs: Date.now() - startedAt,
+    cacheHit,
+  }));
+}
 
 function getCachedImage(url: string): string | null {
   const entry = imageCache.get(url);
@@ -46,6 +69,15 @@ export const METEONEWS_URL =
   "https://meteonews.at/de/Allgemeine_Lage/K33/Europa";
 
 export async function fetchMeteonews(): Promise<string> {
+  const startedAt = Date.now();
+  if (
+    meteonewsCache
+    && Date.now() - meteonewsCache.fetchedAt <= METEONEWS_CACHE_TTL
+  ) {
+    logEuropeTiming("meteonews", "report", startedAt, true);
+    return meteonewsCache.text;
+  }
+  meteonewsCache = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const res = await fetch(METEONEWS_URL, {
@@ -65,11 +97,21 @@ export async function fetchMeteonews(): Promise<string> {
             /<div[^>]*class="[^"]*bulletin-wrap[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
           );
 
-        if (bulletinMatch) return stripHtml(bulletinMatch[1]).trim();
+        if (bulletinMatch) {
+          const text = stripHtml(bulletinMatch[1]).trim();
+          meteonewsCache = { text, fetchedAt: Date.now() };
+          logEuropeTiming("meteonews", "report", startedAt, false);
+          return text;
+        }
 
         const plainText = stripHtml(html);
         const startIdx = plainText.indexOf("Europawetter");
-        if (startIdx >= 0) return plainText.slice(startIdx).trim();
+        if (startIdx >= 0) {
+          const text = plainText.slice(startIdx).trim();
+          meteonewsCache = { text, fetchedAt: Date.now() };
+          logEuropeTiming("meteonews", "report", startedAt, false);
+          return text;
+        }
 
         console.warn(
           `Meteonews attempt ${attempt}: no bulletin content found in response`,
@@ -84,6 +126,7 @@ export async function fetchMeteonews(): Promise<string> {
     if (attempt < 3) await new Promise((r) => setTimeout(r, 2000));
   }
   console.error("Meteonews: all 3 attempts failed");
+  logEuropeTiming("meteonews", "report", startedAt, false);
   return "";
 }
 
@@ -131,6 +174,7 @@ export async function fetchKnmiChart(): Promise<{
   url: string;
   imageBase64: string;
 } | null> {
+  const startedAt = Date.now();
   const url = buildKnmiChartUrl();
   const dayStr = new Date().getUTCDate().toString().padStart(2, "0");
   const fallbackUrl = `${KNMI_BASE_URL}/AL${dayStr}00_large.gif`;
@@ -138,6 +182,7 @@ export async function fetchKnmiChart(): Promise<{
     const cached = getCachedImage(url);
     if (cached) {
       console.log(`[cache] KNMI chart hit: ${url}`);
+      logEuropeTiming("knmi", "current-chart", startedAt, true);
       return { url, imageBase64: cached };
     }
     let res = await fetch(url, {
@@ -152,6 +197,7 @@ export async function fetchKnmiChart(): Promise<{
       const cachedFb = getCachedImage(fallbackUrl);
       if (cachedFb) {
         console.log(`[cache] KNMI chart fallback hit: ${fallbackUrl}`);
+        logEuropeTiming("knmi", "current-chart", startedAt, true);
         return { url: fallbackUrl, imageBase64: cachedFb };
       }
       res = await fetch(fallbackUrl, {
@@ -169,12 +215,14 @@ export async function fetchKnmiChart(): Promise<{
     const imageBase64 = Buffer.from(await res.arrayBuffer()).toString("base64");
     setCachedImage(usedUrl, imageBase64);
     console.log(`[cache] KNMI chart stored: ${usedUrl}`);
+    logEuropeTiming("knmi", "current-chart", startedAt, false);
     return { url: usedUrl, imageBase64 };
   } catch (e) {
     console.error(
       "KNMI chart fetch failed:",
       e instanceof Error ? e.message : e,
     );
+    logEuropeTiming("knmi", "current-chart", startedAt, false);
     return null;
   }
 }
@@ -192,11 +240,13 @@ export async function fetchKnmiForecast(): Promise<{
   url: string;
   imageBase64: string;
 } | null> {
+  const startedAt = Date.now();
   const url = buildKnmiForecastUrl();
   try {
     const cached = getCachedImage(url);
     if (cached) {
       console.log(`[cache] KNMI forecast hit: ${url}`);
+      logEuropeTiming("knmi", "forecast-chart", startedAt, true);
       return { url, imageBase64: cached };
     }
     const res = await fetch(url, {
@@ -210,12 +260,14 @@ export async function fetchKnmiForecast(): Promise<{
     const imageBase64 = Buffer.from(await res.arrayBuffer()).toString("base64");
     setCachedImage(url, imageBase64);
     console.log(`[cache] KNMI forecast stored: ${url}`);
+    logEuropeTiming("knmi", "forecast-chart", startedAt, false);
     return { url, imageBase64 };
   } catch (e) {
     console.error(
       "KNMI forecast fetch failed:",
       e instanceof Error ? e.message : e,
     );
+    logEuropeTiming("knmi", "forecast-chart", startedAt, false);
     return null;
   }
 }
@@ -247,10 +299,13 @@ export function buildWetterzentraleForecastUrl(): string {
 export async function fetchWetterzentraleChart(
   url: string,
 ): Promise<{ url: string; imageBase64: string } | null> {
+  const startedAt = Date.now();
+  const phase = url.includes("_0_2.png") ? "current-chart" : "forecast-chart";
   try {
     const cached = getCachedImage(url);
     if (cached) {
       console.log(`[cache] Wetterzentrale hit: ${url}`);
+      logEuropeTiming("wetterzentrale", phase, startedAt, true);
       return { url, imageBase64: cached };
     }
     const res = await fetch(url, {
@@ -264,12 +319,14 @@ export async function fetchWetterzentraleChart(
     const imageBase64 = Buffer.from(await res.arrayBuffer()).toString("base64");
     setCachedImage(url, imageBase64);
     console.log(`[cache] Wetterzentrale stored: ${url}`);
+    logEuropeTiming("wetterzentrale", phase, startedAt, false);
     return { url, imageBase64 };
   } catch (e) {
     console.error(
       "Wetterzentrale fetch failed:",
       e instanceof Error ? e.message : e,
     );
+    logEuropeTiming("wetterzentrale", phase, startedAt, false);
     return null;
   }
 }
@@ -281,6 +338,16 @@ export async function preprocessMeteonews(
   anthropic: Anthropic,
   signal?: AbortSignal,
 ): Promise<string> {
+  const startedAt = Date.now();
+  if (
+    meteonewsCache
+    && meteonewsCache.text === text
+    && meteonewsCache.preprocessed !== undefined
+    && Date.now() - meteonewsCache.fetchedAt <= METEONEWS_CACHE_TTL
+  ) {
+    logEuropeTiming("meteonews", "interpretation", startedAt, true);
+    return meteonewsCache.preprocessed;
+  }
   const result = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 1024,
@@ -292,9 +359,16 @@ export async function preprocessMeteonews(
       },
     ],
   }, { signal });
-  return result.content[0]?.type === "text"
+  const preprocessed = result.content[0]?.type === "text"
     ? result.content[0].text.trim()
     : text;
+  if (meteonewsCache?.text === text) {
+    meteonewsCache.preprocessed = preprocessed;
+  } else {
+    meteonewsCache = { text, preprocessed, fetchedAt: Date.now() };
+  }
+  logEuropeTiming("meteonews", "interpretation", startedAt, false);
+  return preprocessed;
 }
 
 // ── Europe sources ───────────────────────────────────────────────────────────

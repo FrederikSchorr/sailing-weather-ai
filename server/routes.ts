@@ -868,7 +868,8 @@ async function runAnalysisJob(context: AnalysisJobContext): Promise<void> {
   const publish = (data: Record<string, unknown>) => publishAnalysisEvent(jobId, data);
 
   try {
-    publish({ loadingStatus: "Lade Europa Wetterkarten" });
+    const europeStartedAt = Date.now();
+    publish({ loadingStatus: "Lade europäischen Wetterbericht" });
 
     const analysis = createAnalysis({
       userInput,
@@ -897,6 +898,7 @@ async function runAnalysisJob(context: AnalysisJobContext): Promise<void> {
       text_de: meteonewsText || null,
     };
     if (meteonewsText) {
+      publish({ loadingStatus: "Interpretiere europäischen Wetterbericht" });
       const preprocessed = await preprocessMeteonews(meteonewsText, anthropic, signal);
       analysis.data.weatherPreprocessed.europe["generalWeather"] = {
         source: "meteonews",
@@ -924,32 +926,37 @@ async function runAnalysisJob(context: AnalysisJobContext): Promise<void> {
     const currentTs = `Aktuell ${fmtLocal(runUtc)} Ortszeit`;
     const forecastTs = `Forecast ${fmtLocal(fcTarget)} Ortszeit`;
 
-    const wz850Current = await fetchWetterzentraleChart(
-      buildWetterzentraleCurrentUrl(),
-    );
+    publish({ loadingStatus: "Lade europäische Wetterkarten" });
+    const mapsStartedAt = Date.now();
+    const [wz850Current, wz850Forecast, knmi, knmiForecast] = await Promise.all([
+      fetchWetterzentraleChart(buildWetterzentraleCurrentUrl()),
+      fetchWetterzentraleChart(buildWetterzentraleForecastUrl()),
+      fetchKnmiChart(),
+      fetchKnmiForecast(),
+    ]);
+    console.log("[weather-europe]", JSON.stringify({
+      source: "all-maps",
+      phase: "parallel-fetch",
+      durationMs: Date.now() - mapsStartedAt,
+    }));
     analysis.data.weatherPreprocessed.europe["temp850hpaCurrent"] = {
       source: "Wetterzentrale",
       url: wz850Current?.url ?? null,
       imageBase64: wz850Current?.imageBase64 ?? null,
       timestamp: currentTs,
     };
-    const wz850Forecast = await fetchWetterzentraleChart(
-      buildWetterzentraleForecastUrl(),
-    );
     analysis.data.weatherPreprocessed.europe["temp850hpaForecast"] = {
       source: "Wetterzentrale",
       url: wz850Forecast?.url ?? null,
       imageBase64: wz850Forecast?.imageBase64 ?? null,
       timestamp: forecastTs,
     };
-    const knmi = await fetchKnmiChart();
     analysis.data.weatherPreprocessed.europe["frontCurrent"] = {
       source: "KNMI",
       url: knmi?.url ?? null,
       imageBase64: knmi?.imageBase64 ?? null,
       timestamp: currentTs,
     };
-    const knmiForecast = await fetchKnmiForecast();
     analysis.data.weatherPreprocessed.europe["frontForecast"] = {
       source: "KNMI",
       url: knmiForecast?.url ?? null,
@@ -957,6 +964,11 @@ async function runAnalysisJob(context: AnalysisJobContext): Promise<void> {
       timestamp: forecastTs,
     };
     analysis.data.sources.europe.push(...getEuropeSources());
+    console.log("[weather-europe]", JSON.stringify({
+      source: "europe",
+      phase: "complete",
+      durationMs: Date.now() - europeStartedAt,
+    }));
 
     const knmiUtcHour = Math.floor(new Date().getUTCHours() / 6) * 6;
     const knmiUtcDate = new Date();
