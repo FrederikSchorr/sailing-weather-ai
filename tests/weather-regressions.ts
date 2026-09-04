@@ -25,14 +25,17 @@ import {
   ensureWarningFirst,
   ensureWindForecastIcons,
   generateWeatherOutput,
+  buildWindScaffold,
   combineWindAndGustMentions,
   containsPastTodayContent,
+  diagnoseWindForecast,
   hasValidWindValueFormat,
   hasTwoSubstantiveBullets,
   hasConciseWindInterpretation,
   normalizeCurrentHourTodayStart,
   normalizeCalmThresholdMentions,
   normalizeWindDirectionMentions,
+  normalizeWindPairSeparators,
   normalizeWindUnits,
   normalizeSection1Icons,
   normalizeSection2Icons,
@@ -990,6 +993,9 @@ async function testInterpretationPromptContract(): Promise<void> {
     .join("\n");
   assert.match(prompt, /Datum \| Uhrzeit \| Richtung \| Wind_kt \| Böe_kt/);
   assert.match(prompt, /2026-08-22 \| 12:00 \| NW \| 23 \| 32/);
+  assert.match(prompt, /VERBINDLICHES WIND-GERÜST/);
+  assert.match(prompt, /Heute \(Sa 22\.08\.\), maximal 2 Paare: NW 23–32 kt \(12:00\)/);
+  assert.match(prompt, /numerisch nur die dort vorgeschlagenen Wind–Böe-Paare/);
   assert.match(
     prompt,
     /Richtungsangaben ausschließlich als genau eines dieser acht Kürzel schreiben: N, NO, O, SO, S, SW, W oder NW/,
@@ -1064,6 +1070,113 @@ async function testInterpretationPromptContract(): Promise<void> {
     (correctedOutput.airPressureMasses as any).text,
     "- 🌀 Unverändertes Hochdruckgebiet.\n- 🌡️ Unveränderte warme Luftmasse.",
     "valid sections must survive a targeted correction unchanged",
+  );
+
+  const lineRetryRequests: any[] = [];
+  const lineRetryResponses = [
+    [
+      "===airPressureMasses===",
+      "- 🌀 Stabiles Hochdruckgebiet.",
+      "- 🌡️ Warme, trockene Luftmasse.",
+      "===weatherFront===",
+      "- 🌍 Kaltfront weit nördlich.",
+      "- 📍 Testrevier bleibt frontfrei.",
+      "===windWaves===",
+      "- Heute: Bestes Fenster mit NW 23–32 kt.",
+      "- Morgen: Ruhiger Segeltag mit NW 18–26 kt.",
+      "- Übermorgen: Erst NW 8–14 kt, dann W 12–20 kt, später SW 6–11 kt.",
+      "- Di–Do 25.–27.08.: Di NW 8–14 kt; Mi W 7–12 kt; Do SW 6–11 kt.",
+      "===cloudsRain===",
+      "- Heute: ☀️ Stabil und trocken.",
+      "- Morgen: ☀️ Weiterhin trocken.",
+      "- Mo–Do 24.–27.08.: ☀️ Ruhiges Hochdruckwetter.",
+      "===END===",
+    ].join("\n"),
+    [
+      "===windWaves===",
+      "- Heute: Dieser gültige Text darf nicht übernommen werden, NW 20–30 kt.",
+      "- Morgen: Auch dieser gültige Text bleibt unverändert, NW 20–30 kt.",
+      "- Übermorgen: Markanter Dreher mit kurzem Segelfenster; repräsentativ W 12–20 kt.",
+      "- Di–Do 25.–27.08.: Dieser gültige Ausblick bleibt unverändert; Di N 9–15 kt.",
+      "===END===",
+    ].join("\n"),
+  ];
+  const lineRetryAnthropic = {
+    messages: {
+      create: async (request: any) => {
+        lineRetryRequests.push(request);
+        return { content: [{ type: "text", text: lineRetryResponses[lineRetryRequests.length - 1] }] };
+      },
+    },
+  } as unknown as Anthropic;
+  const lineCorrectedOutput = await generateWeatherOutput(analysis, lineRetryAnthropic);
+  assert.equal(lineRetryRequests.length, 2);
+  const lineCorrectionPrompt = lineRetryRequests[1].messages[2].content as string;
+  assert.match(lineCorrectionPrompt, /Übermorgen-Zeile enthält 3 Wind–Böe-Paare, erlaubt sind 1/);
+  assert.match(lineCorrectionPrompt, /ändere ausschließlich die Übermorgen-Zeile/);
+  const lineCorrectedWind = (lineCorrectedOutput.windWaves as any).text as string;
+  assert.match(lineCorrectedWind, /Heute \(Sa 22\.08\.\): 💨 Bestes Fenster mit NW 23–32 kt/);
+  assert.match(lineCorrectedWind, /Morgen \(So 23\.08\.\): 💨 Ruhiger Segeltag mit NW 18–26 kt/);
+  assert.match(lineCorrectedWind, /Übermorgen \(Mo 24\.08\.\): 💨 Markanter Dreher/);
+  assert.match(lineCorrectedWind, /Di–Do 25\.–27\.08\.: 💨 Di NW 8–14 kt; Mi W 7–12 kt; Do SW 6–11 kt/);
+  assert.doesNotMatch(lineCorrectedWind, /Dieser gültige Text|Auch dieser gültige Text|Dieser gültige Ausblick/);
+
+  const structuralRetryResponses = [
+    [
+      "===airPressureMasses===",
+      "- 🌀 Stabiles Hochdruckgebiet.",
+      "- 🌡️ Warme, trockene Luftmasse.",
+      "===weatherFront===",
+      "- 🌍 Kaltfront weit nördlich.",
+      "- 📍 Testrevier bleibt frontfrei.",
+      "===windWaves===",
+      "- Heute: Bestes Fenster mit NW 23–32 kt.",
+      "- Morgen: Ruhiger Segeltag mit NW 18–26 kt.",
+      "- Übermorgen: Diese Zeile enthält irrtümlich bereits den Mehrtagesausblick.",
+      "===cloudsRain===",
+      "- Heute: ☀️ Stabil und trocken.",
+      "- Morgen: ☀️ Weiterhin trocken.",
+      "- Mo–Do 24.–27.08.: ☀️ Ruhiges Hochdruckwetter.",
+      "===END===",
+    ].join("\n"),
+    [
+      "===windWaves===",
+      "- Heute: Bestes Fenster mit NW 23–32 kt.",
+      "- Morgen: 💨",
+      "- Übermorgen: Markanter Dreher mit W 12–20 kt.",
+      "- Di–Do 25.–27.08.: Di NW 8–14 kt; Mi W 7–12 kt; Do SW 6–11 kt.",
+      "===END===",
+    ].join("\n"),
+  ];
+  const structuralRetryRequests: any[] = [];
+  const structuralRetryAnthropic = {
+    messages: {
+      create: async (request: any) => {
+        structuralRetryRequests.push(request);
+        return {
+          content: [{
+            type: "text",
+            text: structuralRetryResponses[structuralRetryRequests.length - 1],
+          }],
+        };
+      },
+    },
+  } as unknown as Anthropic;
+  const structuralOutput = await generateWeatherOutput(analysis, structuralRetryAnthropic);
+  assert.equal(structuralRetryRequests.length, 2);
+  assert.match(
+    structuralRetryRequests[1].messages[2].content as string,
+    /ändere ausschließlich die Heute-Zeile, die Morgen-Zeile, die Übermorgen-Zeile, die Mehrtages-Zeile/,
+    "an incomplete wind structure must request all four forecast lines",
+  );
+  assert.match(
+    (structuralOutput.windWaves as any).text,
+    /Di–Do 25\.–27\.08\.: 💨 Di NW 8–14 kt; Mi W 7–12 kt; Do SW 6–11 kt/,
+  );
+  assert.match(
+    (structuralOutput.windWaves as any).text,
+    /Morgen \(So 23\.08\.\): 💨 Ruhiger Segeltag mit NW 18–26 kt/,
+    "an empty correction line must not overwrite a substantive previous forecast line",
   );
 
   const windLabels = {
@@ -2226,8 +2339,23 @@ function testWindDirectionNormalization(): void {
     "- Morgen: NO, danach SO.",
     "English compass abbreviations in generated forecast prose must be localized before eight-point normalization",
   );
+  assert.equal(
+    normalizeWindDirectionMentions(
+      "- So–Di 06.–08.09.: So S 5–16 kt; Mo O 1–7 kt; Di S 11–19 kt.",
+    ),
+    "- So–Di 06.–08.09.: So S 5–16 kt; Mo O 1–7 kt; Di S 11–19 kt.",
+    "weekday labels and their following direction must survive production normalization",
+  );
 
   assert.equal(normalizeWindUnits("W 8–16 kn; später O 7–12 Knoten."), "W 8–16 kt; später O 7–12 kt.");
+  assert.equal(
+    normalizeWindPairSeparators("W 8 bis 16 kt; O 7/12 kt."),
+    "W 8–16 kt; O 7–12 kt.",
+  );
+  assert.equal(
+    combineWindAndGustMentions("NW Wind 8 kt; Böen 16 kt. Später O 7 kt, mit Böen bis zu 12 kt."),
+    "NW Wind 8–16 kt. Später O 7–12 kt.",
+  );
   assert.equal(
     normalizeCalmThresholdMentions("Der Wind bricht auf unter 3 kt zusammen; später unter 2 kt."),
     "Der Wind bricht bis zur Flaute zusammen; später nahezu Flaute.",
@@ -2244,6 +2372,52 @@ function testWindDirectionNormalization(): void {
     ),
     false,
     "composite/intermediate directions and every single kt value must invalidate the output",
+  );
+  assert.deepEqual(
+    diagnoseWindForecast([
+      "- Heute (Do 03.09.): NW 15–22 kt.",
+      "- Morgen (Fr 04.09.): NW 6–21 kt.",
+      "- Übermorgen (Sa 05.09.): N 24–35 kt, danach W 12–20 kt und SW 8–14 kt.",
+      "- So–Di 06.–08.09.: So S 5–16 kt; Mo O 1–7 kt; Di S 11–19 kt.",
+    ].join("\n")),
+    [{
+      lineIndex: 2,
+      message: "die Übermorgen-Zeile enthält 3 Wind–Böe-Paare, erlaubt sind 1: - Übermorgen (Sa 05.09.): N 24–35 kt, danach W 12–20 kt und SW 8–14 kt.",
+    }],
+  );
+  assert.equal(
+    buildWindScaffold([
+      "2026-09-03 | 12:00 | NW | 8 | 16",
+      "2026-09-03 | 18:00 | W | 12 | 22",
+      "2026-09-04 | 06:00 | O | 5 | 9",
+      "2026-09-04 | 15:00 | SO | 14 | 24",
+      "2026-09-05 | 12:00 | S | 10 | 18",
+      "2026-09-06 | 12:00 | SW | 9 | 15",
+    ].join("\n"), {
+      todayLabel: "Do 03.09.",
+      tomorrowLabel: "Fr 04.09.",
+      dayAfterTomorrowLabel: "Sa 05.09.",
+      forecastTailLabel: "So–Di 06.–08.09.",
+    }),
+    [
+      "- Heute (Do 03.09.), maximal 2 Paare: NW 8–16 kt (12:00); W 12–22 kt (18:00)",
+      "- Morgen (Fr 04.09.), maximal 2 Paare: O 5–9 kt (06:00); SO 14–24 kt (15:00)",
+      "- Übermorgen (Sa 05.09.), maximal 1 Paar: S 10–18 kt (12:00)",
+      "- So–Di 06.–08.09., maximal 1 Paar je Tag und 3 insgesamt: 2026-09-06: SW 9–15 kt (12:00)",
+    ].join("\n"),
+  );
+  assert.equal(
+    buildWindScaffold(
+      "2026-09-03 | 12:00 | NW |  | \n2026-09-03 | 15:00 | NW | 8 | 7",
+      {
+        todayLabel: "Do 03.09.",
+        tomorrowLabel: "Fr 04.09.",
+        dayAfterTomorrowLabel: "Sa 05.09.",
+        forecastTailLabel: "So–Di 06.–08.09.",
+      },
+    ),
+    "(kein belastbares Wind-Gerüst verfügbar)",
+    "blank numeric fields and gusts below sustained wind must not enter the scaffold",
   );
 }
 

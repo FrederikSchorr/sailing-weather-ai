@@ -33,25 +33,42 @@ function normalizeWindDirection(direction: string): typeof WIND_DIRECTIONS_8[num
 }
 
 export function normalizeWindDirectionMentions(text: string): string {
-  const localizedText = text
-    .replace(/\bNE\b/g, "NO")
-    .replace(/\bSE\b/g, "SO");
   const pairPattern = new RegExp(
     `\\b(${WIND_DIRECTION_TOKEN})(?:\\s*(?:/|[–—-])\\s*|\\s+bis\\s+|\\s+)(${WIND_DIRECTION_TOKEN})\\b`,
     "gi",
   );
-  return localizedText.replace(pairPattern, (_match, first: string, second: string) => {
-    const normalizedFirst = normalizeWindDirection(first);
-    const normalizedSecond = normalizeWindDirection(second);
-    const firstIndex = WIND_DIRECTIONS_8.indexOf(normalizedFirst);
-    const secondIndex = WIND_DIRECTIONS_8.indexOf(normalizedSecond);
-    const shortestDelta = ((secondIndex - firstIndex + 4) % 8) - 4;
-    if (Math.abs(shortestDelta) === 4) return normalizedFirst;
-    const midpoint = (firstIndex + shortestDelta / 2 + 8) % 8;
-    return WIND_DIRECTIONS_8[Math.round(midpoint) % WIND_DIRECTIONS_8.length];
-  }).replace(new RegExp(`\\b(${WIND_DIRECTION_TOKEN})\\b`, "gi"), (_match, direction: string) =>
-    normalizeWindDirection(direction),
-  );
+  const normalizeSegment = (segment: string): string => {
+    const protectedDays: string[] = [];
+    const protectedSegment = segment.replace(
+      /\b(So|Mo|Di|Mi|Do|Fr|Sa)\s+(?=(?:N|NO|O|SO|S|SW|W|NW)\s+\d)/g,
+      (match) => {
+        const marker = `__WEEKDAY_${protectedDays.length}__`;
+        protectedDays.push(match);
+        return `${marker} `;
+      },
+    );
+    const localized = protectedSegment
+      .replace(/\bNE\b/g, "NO")
+      .replace(/\bSE\b/g, "SO");
+    const normalized = localized.replace(pairPattern, (_match, first: string, second: string) => {
+      const normalizedFirst = normalizeWindDirection(first);
+      const normalizedSecond = normalizeWindDirection(second);
+      const firstIndex = WIND_DIRECTIONS_8.indexOf(normalizedFirst);
+      const secondIndex = WIND_DIRECTIONS_8.indexOf(normalizedSecond);
+      const shortestDelta = ((secondIndex - firstIndex + 4) % 8) - 4;
+      if (Math.abs(shortestDelta) === 4) return normalizedFirst;
+      const midpoint = (firstIndex + shortestDelta / 2 + 8) % 8;
+      return WIND_DIRECTIONS_8[Math.round(midpoint) % WIND_DIRECTIONS_8.length];
+    }).replace(new RegExp(`\\b(${WIND_DIRECTION_TOKEN})\\b`, "gi"), (_match, direction: string) =>
+      normalizeWindDirection(direction),
+    );
+    return normalized.replace(/__WEEKDAY_(\d+)__\s*/g, (_match, index) => protectedDays[Number(index)]);
+  };
+  return text.split(/\r?\n/).map(line => {
+    const separator = line.indexOf(":");
+    if (separator === -1) return normalizeSegment(line);
+    return `${line.slice(0, separator + 1)}${normalizeSegment(line.slice(separator + 1))}`;
+  }).join("\n");
 }
 
 function addCalendarDays(date: Date, days: number): Date {
@@ -403,6 +420,12 @@ export async function generateWeatherOutput(
   const section3WindHourlyInput = typeof section3WindContext.hourlyText_de === "string"
     ? section3WindContext.hourlyText_de
     : "(nicht verfügbar)";
+  const section3WindScaffold = buildWindScaffold(section3WindHourlyInput, {
+    todayLabel,
+    tomorrowLabel,
+    dayAfterTomorrowLabel,
+    forecastTailLabel,
+  });
   const section3LocalContext = Object.fromEntries(
     Object.entries(local).filter(([key]) => ![
       "wind",
@@ -456,6 +479,12 @@ ${JSON.stringify(section3LocalContext, null, 2)}
 === LOKALER STÜNDLICHER WIND ===
 Datum | Uhrzeit | Richtung | Wind_kt | Böe_kt
 ${section3WindHourlyInput}
+
+=== VERBINDLICHES WIND-GERÜST FÜR ABSCHNITT 3 ===
+${section3WindScaffold}
+- Verwende pro Prognosezeile numerisch nur die dort vorgeschlagenen Wind–Böe-Paare.
+- Beschreibe weitere Übergänge qualitativ ohne zusätzliche Windwerte.
+- Das Gerüst begrenzt nur die Zahlen; lokale Mechanismen, Segelfenster, Dreher, Böigkeit und Seegang bleiben interpretativ zu erklären.
 
 === OPTIONALER GROSSWETTERLAGEN-KONTEXT FÜR ABSCHNITT 3 ===
 Europäische Wetterlage: ${generalWeather ?? "(nicht verfügbar)"}
@@ -517,12 +546,12 @@ ${buildSection4Rules(todayLabel, tomorrowLabel, forecastOverviewLabel, currentLo
         stripRedundantWindRangeMentions(
           stripRedundantGustMentions(
             normalizeCalmThresholdMentions(
-              normalizeWindUnits(combineWindAndGustMentions(
+              combineWindAndGustMentions(normalizeWindPairSeparators(normalizeWindUnits(
                 restoreWindGustRanges(
                   stripStrongestGustMentions(normalizeWindDirectionMentions(text)),
                   local["wind"]?.text_de,
                 ),
-              )),
+              ))),
             ),
           ),
         ),
@@ -543,6 +572,7 @@ ${buildSection4Rules(todayLabel, tomorrowLabel, forecastOverviewLabel, currentLo
     };
     let retryFeedback = "";
     let sectionsToCorrect = [...SECTION_KEYS];
+    let windLineIndexesToCorrect: number[] = [];
     for (let attempt = 0; attempt < 3; attempt += 1) {
       if (attempt > 0) onRetry?.((attempt + 1) as 2 | 3);
       const messages: Anthropic.Messages.MessageParam[] = attempt === 0
@@ -556,8 +586,12 @@ ${buildSection4Rules(todayLabel, tomorrowLabel, forecastOverviewLabel, currentLo
 Beim vorigen Output schlugen genau diese Prüfungen fehl: ${retryFeedback}.
 Gib nur die Marker der genannten Abschnitte mit ihrem korrigierten Inhalt aus, danach ===END===.
 Gib keinen anderen Abschnitt erneut aus; dessen bereits gültiger Inhalt wird unverändert bewahrt.
+${sectionsToCorrect.includes("windWaves") && windLineIndexesToCorrect.length > 0
+  ? `In Abschnitt 3 ändere ausschließlich ${windLineIndexesToCorrect.map(windForecastLineName).join(", ")}. Gib zur sicheren Zuordnung trotzdem Warnzeile und alle vier Prognosezeilen aus; kopiere die übrigen Prognosezeilen inhaltlich unverändert.`
+  : ""}
 Abschnitt 3 muss zusätzlich zur optionalen Warnzeile exakt vier eigene Prognosezeilen enthalten:
 Heute (${todayLabel}), Morgen (${tomorrowLabel}), Übermorgen (${dayAfterTomorrowLabel}) und ${forecastTailLabel}.
+Jede dieser vier Zeilen muss nach Präfix und Symbol einen inhaltlich vollständigen Prognosesatz enthalten; eine leere Zeile oder nur "💨" ist unzulässig.
 Abschnitt 4 muss exakt drei eigene Prognosezeilen enthalten:
 Heute (${todayLabel}), Morgen (${tomorrowLabel}) und ${forecastOverviewLabel}.
 Abschnitt 4 darf keinerlei Wind-, Böen-, Wellen- oder Seegangsinformation enthalten.
@@ -585,7 +619,23 @@ Jede Prognosezeile beginnt mit "- ". Keine vorgeschriebene Prognosezeile des zu 
       } else if (correction) {
         parsed ??= {};
         for (const section of sectionsToCorrect) {
-          if (correction[section] !== undefined) parsed[section] = correction[section];
+          if (
+            section === "windWaves"
+            && correction.windWaves !== undefined
+            && parsed.windWaves !== undefined
+            && windLineIndexesToCorrect.length > 0
+          ) {
+            const previousWind = finalizeWindText(parsed.windWaves);
+            const correctedWind = finalizeWindText(correction.windWaves);
+            parsed.windWaves = mergeWindForecastLines(
+              previousWind,
+              correctedWind,
+              expectedWarningLineCount,
+              windLineIndexesToCorrect,
+            ) ?? parsed.windWaves;
+          } else if (correction[section] !== undefined) {
+            parsed[section] = correction[section];
+          }
         }
       }
       cloudsRainText = parsed
@@ -638,6 +688,23 @@ Jede Prognosezeile beginnt mit "- ". Keine vorgeschriebene Prognosezeile des zu 
         .map(([name]) => name);
       retryFeedback = failedNames.join(", ");
       sectionsToCorrect = failedSections(failedChecks);
+      const windDiagnostics = diagnoseWindForecast(
+        windWavesText ?? undefined,
+        expectedWarningLineCount,
+      );
+      windLineIndexesToCorrect = failedChecks.canonicalWind
+        ? [0, 1, 2, 3]
+        : [
+          ...new Set([
+            ...windDiagnostics.map(diagnostic => diagnostic.lineIndex),
+            ...(failedChecks.pastWindToday ? [0] : []),
+          ]),
+        ].sort((a, b) => a - b);
+      if (windDiagnostics.length > 0) {
+        retryFeedback += `. Konkrete Windfehler: ${windDiagnostics
+          .map(diagnostic => diagnostic.message)
+          .join(" | ")}`;
+      }
       if (failedChecks.conciseWindInterpretation) {
         retryFeedback += ". Zähle die Wind–Böe-Paare in jeder Abschnitt-3-Zeile: "
           + "Heute maximal 2, Morgen maximal 2, Übermorgen maximal 1 und im Mehrtagesausblick "
@@ -737,6 +804,81 @@ function formatSectionMarkers(sections: Record<string, string>): string {
   return `${blocks.join("\n")}\n===END===`;
 }
 
+type WindScaffoldLabels = {
+  todayLabel: string;
+  tomorrowLabel: string;
+  dayAfterTomorrowLabel: string;
+  forecastTailLabel: string;
+};
+
+type WindScaffoldRow = {
+  date: string;
+  time: string;
+  direction: string;
+  speed: number;
+  gust: number;
+};
+
+function formatWindNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(value).replace(".", ",");
+}
+
+function selectWindScaffoldRows(rows: WindScaffoldRow[], maximum: number): WindScaffoldRow[] {
+  if (rows.length <= maximum) return rows;
+  const strongest = rows.reduce((best, row) => row.gust > best.gust ? row : best);
+  if (maximum === 1) return [strongest];
+  const first = rows[0];
+  return first === strongest ? [strongest] : [first, strongest];
+}
+
+export function buildWindScaffold(
+  hourlyText: string,
+  labels: WindScaffoldLabels,
+): string {
+  const rows = hourlyText.split(/\r?\n/).flatMap((line): WindScaffoldRow[] => {
+    const [date, time, direction, speedText, gustText] = line.split("|").map(value => value.trim());
+    const speed = Number(speedText?.replace(",", "."));
+    const gust = Number(gustText?.replace(",", "."));
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")
+      || !/^\d{2}:\d{2}$/.test(time ?? "")
+      || !/^(?:N|NO|O|SO|S|SW|W|NW)$/.test(direction ?? "")
+      || !speedText
+      || !gustText
+      || !Number.isFinite(speed)
+      || !Number.isFinite(gust)
+      || gust < speed
+    ) return [];
+    return [{ date, time, direction, speed, gust }];
+  });
+  const grouped = new Map<string, WindScaffoldRow[]>();
+  for (const row of rows) {
+    const dayRows = grouped.get(row.date) ?? [];
+    dayRows.push(row);
+    grouped.set(row.date, dayRows);
+  }
+  const days = [...grouped.values()];
+  if (days.length === 0) return "(kein belastbares Wind-Gerüst verfügbar)";
+  const renderRows = (dayRows: WindScaffoldRow[], maximum: number) =>
+    selectWindScaffoldRows(dayRows, maximum)
+      .map(row => `${row.direction} ${formatWindNumber(row.speed)}–${formatWindNumber(row.gust)} kt (${row.time})`)
+      .join("; ");
+  const scaffold = [
+    `Heute (${labels.todayLabel}), maximal 2 Paare: ${days[0] ? renderRows(days[0], 2) : "keine Paare verfügbar"}`,
+    `Morgen (${labels.tomorrowLabel}), maximal 2 Paare: ${days[1] ? renderRows(days[1], 2) : "keine Paare verfügbar"}`,
+    `Übermorgen (${labels.dayAfterTomorrowLabel}), maximal 1 Paar: ${days[2] ? renderRows(days[2], 1) : "kein Paar verfügbar"}`,
+  ];
+  const tailDays = days.slice(3, 6);
+  scaffold.push(
+    `${labels.forecastTailLabel}, maximal 1 Paar je Tag und 3 insgesamt: ${
+      tailDays.length > 0
+        ? tailDays.map(dayRows => `${dayRows[0].date}: ${renderRows(dayRows, 1)}`).join("; ")
+        : "keine Paare verfügbar"
+    }`,
+  );
+  return scaffold.map(line => `- ${line}`).join("\n");
+}
+
 function failedSections(failedChecks: Record<string, boolean>): SectionKey[] {
   if (failedChecks.parsed) return [...SECTION_KEYS];
   const sections = new Set<SectionKey>();
@@ -754,6 +896,32 @@ function failedSections(failedChecks: Record<string, boolean>): SectionKey[] {
     || failedChecks.pastCloudToday
   ) sections.add("cloudsRain");
   return [...sections];
+}
+
+function windForecastLineName(index: number): string {
+  return ["die Heute-Zeile", "die Morgen-Zeile", "die Übermorgen-Zeile", "die Mehrtages-Zeile"][index]
+    ?? `Prognosezeile ${index + 1}`;
+}
+
+function mergeWindForecastLines(
+  previous: string | null,
+  correction: string | null,
+  warningLineCount: number,
+  lineIndexes: number[],
+): string | null {
+  if (!previous || !correction) return previous;
+  const previousLines = previous.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const correctedLines = correction.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const previousForecasts = previousLines.slice(warningLineCount);
+  const correctedForecasts = correctedLines.slice(warningLineCount);
+  if (correctedForecasts.length !== 4) return previous;
+  for (const index of lineIndexes) {
+    if (hasSubstantiveWindForecastLine(correctedForecasts[index])) {
+      previousForecasts[index] = correctedForecasts[index];
+    }
+  }
+  if (previousForecasts.length !== 4 || previousForecasts.some(line => !line)) return previous;
+  return [...previousLines.slice(0, warningLineCount), ...previousForecasts].join("\n");
 }
 
 function hasCompleteWindForecast(text: string | undefined): boolean {
@@ -790,7 +958,18 @@ function hasCanonicalWindForecast(
     `- ${labels.forecastTailLabel}:`,
   ];
   return forecasts.length === expectedPrefixes.length
-    && expectedPrefixes.every((prefix, index) => forecasts[index]?.startsWith(prefix));
+    && expectedPrefixes.every((prefix, index) =>
+      forecasts[index]?.startsWith(prefix)
+      && hasSubstantiveWindForecastLine(forecasts[index]));
+}
+
+function hasSubstantiveWindForecastLine(line: string | undefined): boolean {
+  if (!line) return false;
+  const body = forecastBodyAfterLabel(line)
+    .replace(/^(?:💨|🌊)\s*/gu, "")
+    .trim();
+  return (body.match(/\p{L}/gu) ?? []).length >= 5
+    || /\b\d+(?:[.,]\d+)?\s*[–-]\s*\d+(?:[.,]\d+)?\s*kt\b/i.test(body);
 }
 
 function hasCompleteCloudForecast(text: string | undefined): boolean {
@@ -1084,14 +1263,31 @@ export function stripRedundantGustMentions(text: string): string {
 }
 
 export function combineWindAndGustMentions(text: string): string {
-  return text.replace(
-    /(\b(?:Wind\s+)?(\d+(?:[.,]\d+)?)\s*)(kn|kt)\s*,\s*(?:mit\s+)?Böen\s+(?:bis\s+zu\s+)?(\d+(?:[.,]\d+)?)\s*\3\b/gi,
-    (_match, prefix, _speed, unit, gust) => `${prefix.trimEnd()}–${gust} ${unit}`,
-  );
+  return text
+    .replace(
+      /(\b(?:Wind\s+)?(\d+(?:[.,]\d+)?)\s*)(kn|kt|Knoten)\s*[,;]\s*(?:mit\s+)?Böen\s+(?:bis\s+zu\s+)?(\d+(?:[.,]\d+)?)\s*\3\b/gi,
+      (_match, prefix, _speed, unit, gust) => `${prefix.trimEnd()}–${gust} ${unit}`,
+    )
+    .replace(
+      /\b((?:N|NO|O|SO|S|SW|W|NW)\s+)(\d+(?:[.,]\d+)?)\s*(kn|kt|Knoten)\s*[,;]\s*(?:mit\s+)?Böen\s+(?:bis\s+zu\s+)?(\d+(?:[.,]\d+)?)\s*\3\b/gi,
+      (_match, direction, speed, unit, gust) => `${direction}${speed}–${gust} ${unit}`,
+    );
 }
 
 export function normalizeWindUnits(text: string): string {
   return text.replace(/\b(?:kn|Knoten)\b/gi, "kt");
+}
+
+export function normalizeWindPairSeparators(text: string): string {
+  return text
+    .replace(
+      /\b(\d+(?:[.,]\d+)?)\s+(?:bis)\s+(\d+(?:[.,]\d+)?)\s*kt\b/gi,
+      "$1–$2 kt",
+    )
+    .replace(
+      /\b(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*kt\b/gi,
+      "$1–$2 kt",
+    );
 }
 
 export function normalizeCalmThresholdMentions(text: string): string {
@@ -1114,7 +1310,11 @@ export function hasValidWindValueFormat(text: string | undefined): boolean {
     `\\b${canonicalDirection}(?:\\s*(?:/|[–—-])\\s*|\\s+bis\\s+|\\s+)${canonicalDirection}\\b`,
     "i",
   );
-  if (forbiddenIntermediateDirection.test(forecasts) || compositeDirection.test(forecasts)) {
+  const directionValidationText = windDirectionValidationText(forecasts);
+  if (
+    forbiddenIntermediateDirection.test(directionValidationText)
+    || compositeDirection.test(directionValidationText)
+  ) {
     return false;
   }
 
@@ -1124,6 +1324,82 @@ export function hasValidWindValueFormat(text: string | undefined): boolean {
   );
   return !/\b\d+(?:[.,]\d+)?\s*(?:kt|kn|Knoten)\b/i.test(withoutValidPairs)
     && !/\b(?:kn|Knoten)\b/i.test(forecasts);
+}
+
+function windDirectionValidationText(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map(line => line
+      .replace(/^.*?:\s*/, "")
+      .replace(/\b(?:So|Mo|Di|Mi|Do|Fr|Sa)\s+(?=(?:N|NO|O|SO|S|SW|W|NW)\b)/g, ""))
+    .join("\n");
+}
+
+export type WindForecastDiagnostic = {
+  lineIndex: number;
+  message: string;
+};
+
+export function diagnoseWindForecast(
+  text: string | undefined,
+  warningLineCount = 0,
+): WindForecastDiagnostic[] {
+  if (!text) return [{ lineIndex: 0, message: "Abschnitt 3 fehlt vollständig" }];
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(warningLineCount);
+  if (lines.length !== 4) {
+    return [{ lineIndex: 0, message: `Abschnitt 3 enthält ${lines.length} statt 4 Prognosezeilen` }];
+  }
+  const diagnostics: WindForecastDiagnostic[] = [];
+  const pairPattern = /\b\d+(?:[.,]\d+)?\s*[–-]\s*\d+(?:[.,]\d+)?\s*kt\b/gi;
+  const intermediate = /\b(?:NNO|ONO|OSO|SSO|SSW|WSW|WNW|NNW)\b/i;
+  const canonicalDirection = "(?:N|NO|O|SO|S|SW|W|NW)";
+  const composite = new RegExp(
+    `\\b${canonicalDirection}(?:\\s*(?:/|[–—-])\\s*|\\s+bis\\s+|\\s+)${canonicalDirection}\\b`,
+    "i",
+  );
+  const standardMaximumPairs = [2, 2, 1, 3];
+  const absoluteMaximumPairs = [3, 3, 2, 3];
+  const interpretiveSignal =
+    /\b(?:Leitha|Meltemi|Bora|Maestral|therm\w*|Düsen?\w*|Kanalis\w*|Fallwind\w*|Lee(?:effekt)?|Konvergenz\w*|Druckgradient\w*|Kaltsektor\w*|Frontdurchgang\w*|Segelfenster\w*|räumlich\w*|böig)\b/i;
+  lines.forEach((line, lineIndex) => {
+    if (!hasSubstantiveWindForecastLine(line)) {
+      diagnostics.push({
+        lineIndex,
+        message: `${windForecastLineName(lineIndex)} enthält keinen substanziellen Prognosetext: ${line}`,
+      });
+    }
+    const pairCount = (line.match(pairPattern) ?? []).length;
+    const allowed = interpretiveSignal.test(line)
+      ? absoluteMaximumPairs[lineIndex]
+      : standardMaximumPairs[lineIndex];
+    if (pairCount > allowed) {
+      diagnostics.push({
+        lineIndex,
+        message: `${windForecastLineName(lineIndex)} enthält ${pairCount} Wind–Böe-Paare, erlaubt sind ${allowed}: ${line}`,
+      });
+    }
+    const withoutPairs = line.replace(pairPattern, "");
+    if (/\b\d+(?:[.,]\d+)?\s*(?:kt|kn|Knoten)\b/i.test(withoutPairs)) {
+      diagnostics.push({
+        lineIndex,
+        message: `${windForecastLineName(lineIndex)} enthält mindestens einen Wind-Einzelwert statt eines Paares: ${line}`,
+      });
+    }
+    const directionText = windDirectionValidationText(line);
+    if (intermediate.test(directionText) || composite.test(directionText)) {
+      diagnostics.push({
+        lineIndex,
+        message: `${windForecastLineName(lineIndex)} enthält eine Zwischen- oder Kombinationsrichtung: ${line}`,
+      });
+    }
+    if (/\b(?:Spitze|Maximum|Höchstwert)\s+(?:um|gegen)\s+\d{1,2}(?::\d{2})?\b/i.test(line)) {
+      diagnostics.push({
+        lineIndex,
+        message: `${windForecastLineName(lineIndex)} transkribiert einen Peak-Zeitpunkt: ${line}`,
+      });
+    }
+  });
+  return diagnostics;
 }
 
 export function hasConciseWindInterpretation(
