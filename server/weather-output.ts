@@ -609,6 +609,7 @@ Jede Prognosezeile beginnt mit "- ". Keine vorgeschriebene Prognosezeile des zu 
       const msg = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 1800,
+        temperature: 0.2,
         system: SYSTEM_PROMPT,
         messages,
       }, { signal });

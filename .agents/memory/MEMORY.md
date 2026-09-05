@@ -11,3 +11,4 @@
 - [Weather output semantic validation](weather-output-semantic-validation.md) — validate target identity and negated weather phrases after LLM generation, not only icons and counts
 - [Analysis reload persistence](analysis-reload-persistence.md) — persist completed analyses through independent browser storage paths; one failed path must never prevent the other
 - [Weekdays in wind normalization](weekday-wind-normalization.md) — protect German weekday labels before case-insensitive compass normalization
+- [Weather LLM model tuning](weather-llm-model-tuning.md) — Sonnet 4.6 at temperature 0 outperformed Opus 4.6 for the strict four-section forecast contract
