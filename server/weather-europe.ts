@@ -14,6 +14,7 @@ interface MeteonewsCacheEntry {
 }
 
 let meteonewsCache: MeteonewsCacheEntry | null = null;
+let meteonewsFetchInFlight: Promise<string> | null = null;
 
 function logEuropeTiming(
   source: string,
@@ -77,7 +78,21 @@ export async function fetchMeteonews(): Promise<string> {
     logEuropeTiming("meteonews", "report", startedAt, true);
     return meteonewsCache.text;
   }
+  if (meteonewsFetchInFlight) {
+    const text = await meteonewsFetchInFlight;
+    logEuropeTiming("meteonews", "report-shared", startedAt, true);
+    return text;
+  }
   meteonewsCache = null;
+  meteonewsFetchInFlight = fetchMeteonewsFresh(startedAt);
+  try {
+    return await meteonewsFetchInFlight;
+  } finally {
+    meteonewsFetchInFlight = null;
+  }
+}
+
+async function fetchMeteonewsFresh(startedAt: number): Promise<string> {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const res = await fetch(METEONEWS_URL, {
@@ -126,6 +141,7 @@ export async function fetchMeteonews(): Promise<string> {
     if (attempt < 3) await new Promise((r) => setTimeout(r, 2000));
   }
   console.error("Meteonews: all 3 attempts failed");
+  meteonewsCache = { text: "", fetchedAt: Date.now() };
   logEuropeTiming("meteonews", "report", startedAt, false);
   return "";
 }
