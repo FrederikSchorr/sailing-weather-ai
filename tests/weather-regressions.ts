@@ -6,6 +6,7 @@
 
 import assert from "node:assert/strict";
 import Anthropic from "@anthropic-ai/sdk";
+import { buildSection3WindyConfig } from "../client/src/lib/windy";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -1223,6 +1224,33 @@ async function testInterpretationPromptContract(): Promise<void> {
   );
   assert.match(windWithoutWaveData, /Heute \(Sa 22\.08\.\): 💨 NW 10–15 kt/);
   assert.match(windWithoutWaveData, /Morgen \(So 23\.08\.\): 💨 NW 10–15 kt/);
+
+  const iconEuWindy = buildSection3WindyConfig({
+    model: "iconEu",
+    lat: 47.9186,
+    lon: 13.8003,
+    zoom: 5,
+  });
+  assert.equal(iconEuWindy.overlay, "waves");
+  assert.equal(iconEuWindy.product, "iconEu");
+  assert.equal(
+    iconEuWindy.url,
+    "https://www.windy.com/47.919/13.800/iconEuWaves/waves?iconEu,waves,47.919,13.800,5,i:pressure,p:favs",
+  );
+
+  const iconD2Windy = buildSection3WindyConfig({
+    model: "iconD2",
+    lat: 54.1234,
+    lon: -1.9876,
+    zoom: 6,
+  });
+  assert.equal(iconD2Windy.overlay, "wind");
+  assert.equal(iconD2Windy.product, "iconD2");
+  assert.equal(
+    iconD2Windy.url,
+    "https://www.windy.com/54.123/-1.988/iconD2?iconD2,wind,54.123,-1.988,6,i:pressure,p:favs",
+  );
+  assert.doesNotMatch(iconD2Windy.url, /iconEuWaves|,waves,/);
 
   const calendarPrefixedWind = enforceWindForecastDatePrefixes(
     [

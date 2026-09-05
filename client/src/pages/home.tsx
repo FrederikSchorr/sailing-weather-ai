@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import type { ChatMessage, GeocodeResult, WeatherEuropeSSE, WeatherOutputData } from "@shared/schema";
 import CityMeteogram from "@/components/city-meteogram";
 import SeaWindForecast from "@/components/sea-wind-forecast";
+import { buildSection3WindyConfig } from "@/lib/windy";
 
 const KNMI_SOURCE_URL = "https://cdn.knmi.nl/knmi/map/page/weer/waarschuwingen_verwachtingen/weerkaarten";
 const MAX_CHAT_HISTORY_CONTENT = 2000;
@@ -319,10 +320,12 @@ function AnalysisView({ location, weatherEurope, weatherOutput, analysisJson, an
   const cityLat = location.cityLat ?? location.lat;
   const cityLon = location.cityLon ?? location.lon;
   const mapZoom = Math.max(zoom - 2, 4);
-  const isIconEu = model === "iconEu";
-  const windUrl = isIconEu
-    ? `https://www.windy.com/${saLat.toFixed(3)}/${saLon.toFixed(3)}/iconEuWaves/waves?iconEu,waves,${saLat.toFixed(3)},${saLon.toFixed(3)},${mapZoom},i:pressure,p:favs`
-    : `https://www.windy.com/${saLat.toFixed(3)}/${saLon.toFixed(3)}/${model}?${model},wind,${saLat.toFixed(3)},${saLon.toFixed(3)},${mapZoom},i:pressure,p:favs`;
+  const section3Windy = buildSection3WindyConfig({
+    model,
+    lat: saLat,
+    lon: saLon,
+    zoom: mapZoom,
+  });
   const meteogramUrl = `https://www.windy.com/${cityLat.toFixed(3)}/${cityLon.toFixed(3)}/${model}/meteogram?${model},clouds,${cityLat.toFixed(3)},${cityLon.toFixed(3)},${mapZoom},i:pressure`;
   const jsonDownloadUrl = analysisJson
     ? `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(analysisJson, null, 2))}`
@@ -400,8 +403,20 @@ function AnalysisView({ location, weatherEurope, weatherOutput, analysisJson, an
 
           <SectionTitle num={3} title="Wind & Welle" />
           <div className="my-3" data-testid="section-card-3">
-            <WindyEmbed lat={saLat} lon={saLon} overlay="wind" product={model} level="surface" zoom={Math.max(zoom - 2, 4)} marker />
-            <SourceLink label={`Wind ${sailingAreaShort}`} provider="windy.com" url={windUrl} />
+            <WindyEmbed
+              lat={saLat}
+              lon={saLon}
+              overlay={section3Windy.overlay}
+              product={section3Windy.product}
+              level="surface"
+              zoom={mapZoom}
+              marker
+            />
+            <SourceLink
+              label={`${section3Windy.overlay === "waves" ? "Wind & Welle" : "Wind"} ${sailingAreaShort}`}
+              provider="windy.com"
+              url={section3Windy.url}
+            />
             <SeaWindForecast analysisJson={analysisJson} isLoading={isStreaming && !hasError} />
           </div>
           {resolvedWeatherOutput?.windWaves?.text && (
