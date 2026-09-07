@@ -66,6 +66,7 @@ Für alle Abschnitte gilt:
 - Gewitter nur bei gestütztem lokalem Signal oder konkreter nationaler Ortsinformation
 - keine normale abendliche Abkühlung oder kleine stündliche Schwankungen als markante Entwicklung darstellen
 - Mehrwert: wichtigste Wetterphase und Übergänge statt Ablesen jeder Chartspalte
+- nächtliche Taupunkte dürfen auffällig feuchte oder trockene Nächte stützen, werden aber weder täglich noch als Werteliste erwähnt
 
 ## Wiederholbare Ortsmatrix
 

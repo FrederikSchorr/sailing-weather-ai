@@ -462,6 +462,7 @@ type Section4WeatherRow = {
   label: string;
   hour: number;
   temperatureC: number | null;
+  dewPointC: number | null;
   pressureHPa: number | null;
   rainMm: number | null;
   precipitationProbabilityPct: number | null;
@@ -577,6 +578,12 @@ function summarizeSection4Day(rows: Section4WeatherRow[]): Record<string, unknow
       .map(row => row.cloudType)
       .filter((value): value is CloudType => value !== null),
   ));
+  const nighttimeDewPointSpreads = rows
+    .filter(row => row.hour >= 21 || row.hour < 7)
+    .map(row => row.temperatureC !== null && row.dewPointC !== null
+      ? row.temperatureC - row.dewPointC
+      : null)
+    .filter((value): value is number => value !== null && value >= 0);
 
   const temperatureStart = temperatures[0] ?? null;
   const temperatureEnd = temperatures.at(-1) ?? null;
@@ -592,6 +599,15 @@ function summarizeSection4Day(rows: Section4WeatherRow[]): Record<string, unknow
       changeC: roundTo(temperatureEnd! - temperatureStart!),
       steepestDrop: stepChange(rows, row => row.temperatureC, "drop"),
       steepestRise: stepChange(rows, row => row.temperatureC, "rise"),
+    } : null,
+    nighttimeMoisture: nighttimeDewPointSpreads.length ? {
+      minTemperatureDewPointSpreadC: roundTo(Math.min(...nighttimeDewPointSpreads)),
+      maxTemperatureDewPointSpreadC: roundTo(Math.max(...nighttimeDewPointSpreads)),
+      character: Math.min(...nighttimeDewPointSpreads) <= 2
+        ? "feucht"
+        : Math.min(...nighttimeDewPointSpreads) >= 5
+          ? "trocken"
+          : "neutral",
     } : null,
     pressure: pressures.length ? {
       minHPa: roundTo(Math.min(...pressures)),
@@ -640,6 +656,7 @@ export function buildSection4WeatherContext(
       label: local.label,
       hour: local.hour,
       temperatureC: numberAt(hourly.temp2mC, index),
+      dewPointC: numberAt(hourly.dewPoint2mC, index),
       pressureHPa: numberAt(hourly.pressureMslHPa, index),
       rainMm: numberAt(hourly.rainMm, index),
       precipitationProbabilityPct: numberAt(hourly.precipProbabilityPct, index),
@@ -666,6 +683,7 @@ export function buildSection4WeatherContext(
         ? rows.map(row => ({
           time: formatHour(row.hour),
           temperatureC: row.temperatureC,
+          dewPointC: row.dewPointC,
           pressureHPa: row.pressureHPa,
           rainMm: row.rainMm,
           precipitationProbabilityPct: row.precipitationProbabilityPct,

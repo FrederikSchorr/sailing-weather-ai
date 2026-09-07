@@ -2681,6 +2681,16 @@ function testResolvedForecastExportFeedsCharts(): void {
     30,
     "section 4 must interpret the resolved local city forecast rather than the Open-Meteo baseline",
   );
+  assert.equal(
+    section4Context.days[0].summary.nighttimeMoisture.character,
+    "trocken",
+    "section 4 should expose a dry-night signal when nighttime temperature stays well above dew point",
+  );
+  assert.equal(
+    section4Context.days[0].timeline[0].dewPointC,
+    12,
+    "section 4 should expose source dew points without estimating missing values",
+  );
   const exported = getSanitizedAnalysisExport({
     meta: { app: "aiWindy", version: "test", requestDate: new Date(start).toISOString() },
     position: { userInput: "Testrevier", country: "Kroatien", countryCode: "HR" },
