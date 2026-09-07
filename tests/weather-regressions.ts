@@ -1150,6 +1150,7 @@ async function testInterpretationPromptContract(): Promise<void> {
     ].join("\n"),
   ];
   const structuralRetryRequests: any[] = [];
+  const structuralValidationAttempts: number[] = [];
   const structuralRetryAnthropic = {
     messages: {
       create: async (request: any) => {
@@ -1163,8 +1164,19 @@ async function testInterpretationPromptContract(): Promise<void> {
       },
     },
   } as unknown as Anthropic;
-  const structuralOutput = await generateWeatherOutput(analysis, structuralRetryAnthropic);
+  const structuralOutput = await generateWeatherOutput(
+    analysis,
+    structuralRetryAnthropic,
+    undefined,
+    undefined,
+    attempt => structuralValidationAttempts.push(attempt),
+  );
   assert.equal(structuralRetryRequests.length, 2);
+  assert.deepEqual(
+    structuralValidationAttempts,
+    [1, 2],
+    "the loading status should enter validation after every interpretation attempt",
+  );
   assert.match(
     structuralRetryRequests[1].messages[2].content as string,
     /ändere ausschließlich die Heute-Zeile, die Morgen-Zeile, die Übermorgen-Zeile, die Mehrtages-Zeile/,

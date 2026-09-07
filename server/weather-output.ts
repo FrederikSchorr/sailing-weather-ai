@@ -342,6 +342,7 @@ export async function generateWeatherOutput(
   anthropic: Anthropic,
   signal?: AbortSignal,
   onRetry?: (attempt: 2 | 3) => void,
+  onValidate?: (attempt: 1 | 2 | 3) => void,
 ): Promise<Record<string, unknown>> {
   const { position, weatherPreprocessed } = analysis;
   const europe = weatherPreprocessed.europe as Record<string, any>;
@@ -616,6 +617,7 @@ Jede Prognosezeile beginnt mit "- ". Keine vorgeschriebene Prognosezeile des zu 
         messages,
       }, { signal });
       raw = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : "";
+      onValidate?.((attempt + 1) as 1 | 2 | 3);
       const correction = parseSectionMarkers(raw);
       if (attempt === 0) {
         parsed = correction;

@@ -1047,6 +1047,9 @@ async function runAnalysisJob(context: AnalysisJobContext): Promise<void> {
       (attempt) => publish({
         loadingStatus: `Interpretieren der lokalen Wetterdaten (${attempt}. Versuch) …`,
       }),
+      () => publish({
+        loadingStatus: "Validiere Wetterinterpretation …",
+      }),
     );
     Object.assign(analysis.data.weatherOutput, weatherOutput);
     analysis.save();
