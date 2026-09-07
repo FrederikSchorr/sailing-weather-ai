@@ -601,9 +601,7 @@ function summarizeSection4Day(rows: Section4WeatherRow[]): Record<string, unknow
       steepestRise: stepChange(rows, row => row.temperatureC, "rise"),
     } : null,
     nighttimeMoisture: nighttimeDewPointSpreads.length ? {
-      minTemperatureDewPointSpreadC: roundTo(Math.min(...nighttimeDewPointSpreads)),
-      maxTemperatureDewPointSpreadC: roundTo(Math.max(...nighttimeDewPointSpreads)),
-      character: Math.min(...nighttimeDewPointSpreads) <= 2
+      signal: Math.min(...nighttimeDewPointSpreads) <= 2
         ? "feucht"
         : Math.min(...nighttimeDewPointSpreads) >= 5
           ? "trocken"
@@ -683,7 +681,6 @@ export function buildSection4WeatherContext(
         ? rows.map(row => ({
           time: formatHour(row.hour),
           temperatureC: row.temperatureC,
-          dewPointC: row.dewPointC,
           pressureHPa: row.pressureHPa,
           rainMm: row.rainMm,
           precipitationProbabilityPct: row.precipitationProbabilityPct,

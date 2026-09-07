@@ -247,7 +247,7 @@ Input: ENTWICKLUNGS- UND LAGEKONTEXT FÜR ABSCHNITT 4 und KNMI-Frontkarten; Wind
 - INTERPRETIERE Auffälligkeiten und Veränderungen, statt Meteogrammwerte aufzuzählen. Priorität: markanter Drucktrend, Niederschlagsfenster/-spitze, rascher Temperaturwechsel, belastbares Gewittersignal und deutlicher Wetterumschwung. Bewölkung nur bei relevantem Wechsel.
 - Heute granular, aber kompakt: höchstens 2–3 wichtigste Entwicklungen in zeitlicher Reihenfolge. Wenn mehrere lokale Signale vorhanden sind, nicht nur einen Einzelwert oder eine einzige Wetterbeschreibung nennen; niemals mit erfundenen Details auffüllen. Regen als qualitative zusammengefasste Phase; konkrete Uhrzeit nur für markanten Beginn oder Höhepunkt. Temperaturen auf ganze °C runden; Temperaturänderungen nur mit groben Tagesphasen. Einen normalen abendlichen Rückgang und kleine Stundenänderungen bis 3°C nicht erwähnen.
 - Morgen weniger granular: nur nachts, morgens, mittags, nachmittags oder abends, keine Ziffer-Uhrzeiten. ${forecastOverviewLabel} ausschließlich als High-Level-Trend der folgenden vier Tage, ohne Uhrzeiten oder Tagesphasen.
-- Nächtliche Taupunkte bzw. die Temperatur-Taupunkt-Differenz dürfen verwendet werden, um eine auffällig feuchte oder trockene Nacht einzuordnen. Nur erwähnen, wenn dies für die Nacht meteorologisch aussagekräftig ist; nicht täglich, nicht schematisch und nicht als bloße Taupunktwert-Aufzählung.
+- localForecast.summary.nighttimeMoisture.signal ist bereits aus den nächtlichen Taupunkten berechnet. "feucht" oder "trocken" darf natürlichsprachlich zur Einordnung einer auffälligen Nacht verwendet werden, aber nur bei meteorologischem Mehrwert. Niemals die Berechnung, Taupunktwerte, Abstände, Differenzen oder Begriffe wie "Taupunkt-Spread" erklären. Nicht täglich oder schematisch erwähnen; "neutral" weglassen.
 - Bei fehlender Auffälligkeit den stabilen Charakter inhaltlich beschreiben, nicht nur "Keine markante Wetterentwicklung erkennbar." Eine gestützte Hochdrucklage mit Wärme, Sonnenschein, Trockenheit oder Stabilität darf genannt werden.
 - Lokale und nationale Informationen haben Vorrang; europäische Lage und Frontkarten liefern nur den Zusammenhang. Einen lokalen Druckfall nur mit passender Front oder Synopsis als Frontdurchgang bezeichnen, sonst als Wetterwechsel oder zunehmenden Tiefdruckeinfluss.
 - Druck nur bei localForecast.summary.pressure.significant=true erwähnen; unter 4 hPa pro Tag weglassen. Druckänderung ist kein Gewitterindikator.
@@ -596,6 +596,7 @@ Jede dieser vier Zeilen muss nach Präfix und Symbol einen inhaltlich vollständ
 Abschnitt 4 muss exakt drei eigene Prognosezeilen enthalten:
 Heute (${todayLabel}), Morgen (${tomorrowLabel}) und ${forecastOverviewLabel}.
 Abschnitt 4 darf keinerlei Wind-, Böen-, Wellen- oder Seegangsinformation enthalten.
+Abschnitt 4 darf das fertige Feuchtigkeitssignal natürlichsprachlich verwenden, aber niemals Taupunkt, Spread, Temperatur-Taupunkt-Differenz oder die Berechnung erwähnen.
 Die Heute-Bullets dürfen nur die Zukunft ab ${currentLocal.label} beschreiben; entferne vergangene Uhrzeiten und abgeschlossene Tagesphasen.
 Liegt der Analysezeitpunkt nach der vollen Stunde, schreibe für einen Beginn in derselben laufenden Stunde "ab jetzt" statt "ab HH Uhr".
 Abschnitt 1 und Abschnitt 2 müssen jeweils exakt zwei inhaltlich vollständige Bullets enthalten; ein Bullet nur mit Symbol ist unzulässig.
@@ -994,8 +995,12 @@ function hasCompleteCloudForecast(text: string | undefined): boolean {
   return forecastLines.length >= 3 && hasTail && hasSubstantiveContent;
 }
 
-function hasForbiddenSection4Content(text: string | undefined): boolean {
-  return Boolean(text && /\b(?:Wind|Böe|Welle|Seegang)\w*\b/i.test(text));
+export function hasForbiddenSection4Content(text: string | undefined): boolean {
+  return Boolean(text && (
+    /\b(?:Wind|Böe|Welle|Seegang)\w*\b/i.test(text)
+    || /\b(?:Taupunkt\w*|Spread)\b/i.test(text)
+    || /Temperatur[\s–-]*Taupunkt/i.test(text)
+  ));
 }
 
 export function hasTwoSubstantiveBullets(text: string | null): boolean {

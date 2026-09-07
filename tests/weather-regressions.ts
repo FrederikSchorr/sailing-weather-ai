@@ -30,6 +30,7 @@ import {
   containsPastTodayContent,
   diagnoseWindForecast,
   hasValidWindValueFormat,
+  hasForbiddenSection4Content,
   hasTwoSubstantiveBullets,
   hasConciseWindInterpretation,
   normalizeCurrentHourTodayStart,
@@ -2682,14 +2683,24 @@ function testResolvedForecastExportFeedsCharts(): void {
     "section 4 must interpret the resolved local city forecast rather than the Open-Meteo baseline",
   );
   assert.equal(
-    section4Context.days[0].summary.nighttimeMoisture.character,
+    section4Context.days[0].summary.nighttimeMoisture.signal,
     "trocken",
     "section 4 should expose a dry-night signal when nighttime temperature stays well above dew point",
   );
+  assert.doesNotMatch(
+    JSON.stringify(section4Context),
+    /dewPoint|Taupunkt|Spread|minTemperatureDewPointSpreadC/i,
+    "section 4 should pass only the finished moisture signal, not the technical dew-point calculation",
+  );
   assert.equal(
-    section4Context.days[0].timeline[0].dewPointC,
-    12,
-    "section 4 should expose source dew points without estimating missing values",
+    hasForbiddenSection4Content("Abends klar, die Nacht bleibt feucht."),
+    false,
+    "natural moisture wording should remain allowed",
+  );
+  assert.equal(
+    hasForbiddenSection4Content("Die Luft bleibt feucht (Taupunkt-Spread unter 2 °C)."),
+    true,
+    "technical dew-point explanations must be rejected",
   );
   const exported = getSanitizedAnalysisExport({
     meta: { app: "aiWindy", version: "test", requestDate: new Date(start).toISOString() },
