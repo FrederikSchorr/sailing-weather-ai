@@ -2683,9 +2683,14 @@ function testResolvedForecastExportFeedsCharts(): void {
     "section 4 must interpret the resolved local city forecast rather than the Open-Meteo baseline",
   );
   assert.equal(
-    section4Context.days[0].summary.nighttimeMoisture.signal,
+    section4Context.days[0].summary.nighttimeMoisture.relativeSignal,
     "trocken",
     "section 4 should expose a dry-night signal when nighttime temperature stays well above dew point",
+  );
+  assert.equal(
+    section4Context.days[0].summary.nighttimeMoisture.absoluteSignal,
+    "angenehm",
+    "section 4 should distinguish an ordinary absolute dew point from muggy air",
   );
   assert.doesNotMatch(
     JSON.stringify(section4Context),

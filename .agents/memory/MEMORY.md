@@ -12,3 +12,4 @@
 - [Analysis reload persistence](analysis-reload-persistence.md) — persist completed analyses through independent browser storage paths; one failed path must never prevent the other
 - [Weekdays in wind normalization](weekday-wind-normalization.md) — protect German weekday labels before case-insensitive compass normalization
 - [Weather LLM model tuning](weather-llm-model-tuning.md) — Sonnet 4.6 at temperature 0 outperformed Opus 4.6 for the strict four-section forecast contract
+- [Nighttime moisture language](nighttime-moisture-language.md) — give section 4 derived relative and absolute moisture signals, never dew-point calculations

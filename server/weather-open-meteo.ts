@@ -584,6 +584,13 @@ function summarizeSection4Day(rows: Section4WeatherRow[]): Record<string, unknow
       ? row.temperatureC - row.dewPointC
       : null)
     .filter((value): value is number => value !== null && value >= 0);
+  const nighttimeDewPoints = rows
+    .filter(row => row.hour >= 21 || row.hour < 7)
+    .map(row => row.dewPointC)
+    .filter((value): value is number => value !== null);
+  const representativeNighttimeDewPoint = nighttimeDewPoints.length
+    ? Math.max(...nighttimeDewPoints)
+    : null;
 
   const temperatureStart = temperatures[0] ?? null;
   const temperatureEnd = temperatures.at(-1) ?? null;
@@ -601,11 +608,20 @@ function summarizeSection4Day(rows: Section4WeatherRow[]): Record<string, unknow
       steepestRise: stepChange(rows, row => row.temperatureC, "rise"),
     } : null,
     nighttimeMoisture: nighttimeDewPointSpreads.length ? {
-      signal: Math.min(...nighttimeDewPointSpreads) <= 2
+      relativeSignal: Math.min(...nighttimeDewPointSpreads) <= 2
         ? "feucht"
         : Math.min(...nighttimeDewPointSpreads) >= 5
           ? "trocken"
           : "neutral",
+      absoluteSignal: representativeNighttimeDewPoint === null
+        ? null
+        : representativeNighttimeDewPoint >= 20
+          ? "schwül"
+          : representativeNighttimeDewPoint >= 16
+            ? "feucht"
+            : representativeNighttimeDewPoint <= 8
+              ? "trocken"
+              : "angenehm",
     } : null,
     pressure: pressures.length ? {
       minHPa: roundTo(Math.min(...pressures)),
