@@ -1730,7 +1730,8 @@ export function ensureWarningFirst(analysis: AnalysisJson, windWavesText: string
   const remainingLines = removeNationalWarningLines(output, warningFirstLine)
     .split("\n")
     .filter((line) => !line.includes(warningFirstLine));
-  return [`- ${warningPrefix}${warningText}`, ...remainingLines].filter(Boolean).join("\n");
+  const singleBulletWarning = warningText.replace(/\s*\r?\n\s*/g, " ");
+  return [`- ${warningPrefix}${singleBulletWarning}`, ...remainingLines].filter(Boolean).join("\n");
 }
 
 function removeNationalWarningLines(text: string, authoritativeFirstLine?: string): string {

@@ -52,3 +52,9 @@ No weather section may use deterministic replacement prose when generated bullet
 **Why:** The LLM forecast content was already useful. A warning-cleanup routine mistakenly treated unhyphenated forecast lines as warning continuation and deleted them.
 
 **How to apply:** If bullets go missing, trace prompt output and postprocessing rather than generating replacement prose. Accept relative or calendar-only forecast prefixes, with or without Markdown hyphens, then normalize them; reject genuinely incomplete LLM contracts.
+
+Official warnings must appear as one bullet containing the heading and the entire warning text, even when the source contains multiple lines.
+
+**Why:** The user explicitly requested that the official warning and its content not be split into separate bullets.
+
+**How to apply:** Preserve official wording, but join source line breaks with spaces before inserting the warning into section 3.

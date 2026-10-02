@@ -2537,8 +2537,13 @@ function testOfficialWarningRestoration(): void {
 
   assert.equal(
     restored,
-    `- ⚠️ ${officialWarning}\n- Heute: ⚠️ Sturmphase mit 42 kt.`,
-    "the official warning must replace the model candidate verbatim without deleting a legitimate severe-wind forecast bullet",
+    `- ⚠️ ${officialWarning.replace(/\n/g, " ")}\n- Heute: ⚠️ Sturmphase mit 42 kt.`,
+    "the official warning must preserve its wording in a single bullet without deleting a legitimate severe-wind forecast bullet",
+  );
+  assert.equal(
+    restored?.split("\n").length,
+    2,
+    "a multiline official warning and one daily forecast must produce exactly two bullets",
   );
 
   const unbulletedForecasts = ensureWarningFirst({
