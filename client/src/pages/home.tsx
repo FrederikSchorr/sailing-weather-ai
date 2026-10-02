@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import type { ChatMessage, GeocodeResult, WeatherEuropeSSE, WeatherOutputData } from "@shared/schema";
 import CityMeteogram from "@/components/city-meteogram";
 import SeaWindForecast from "@/components/sea-wind-forecast";
+import { latestCompletedWeatherAnalysis } from "@shared/weather-chat-context";
 
 const KNMI_SOURCE_URL = "https://cdn.knmi.nl/knmi/map/page/weer/waarschuwingen_verwachtingen/weerkaarten";
 const MAX_CHAT_HISTORY_CONTENT = 2000;
@@ -852,6 +853,7 @@ export default function Home() {
 
     const chatHistory = messages
       .filter((m) => m.id !== "welcome")
+      .slice(-20)
       .map((m) => {
         if (m.content.length <= MAX_CHAT_HISTORY_CONTENT) {
           return { role: m.role, content: m.content };
@@ -867,8 +869,13 @@ export default function Home() {
       message: userMessage,
       history: chatHistory,
       currentLocation: activeLocation,
+      latestWeatherAnalysis: latestCompletedWeatherAnalysis(
+        messages,
+        messageAnalysisJson,
+        messageWeatherOutput,
+      ),
     }));
-  }, [messages, activeLocation]);
+  }, [messages, activeLocation, messageAnalysisJson, messageWeatherOutput]);
 
   useEffect(() => {
     const reconnectVisibleAnalysis = () => {

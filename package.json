@@ -8,7 +8,7 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "test:weather": "tsx tests/weather-regressions.ts && tsx tests/weather-europe-cache.ts && tsx tests/weather-europe-failure-cache.ts",
+    "test:weather": "tsx tests/weather-regressions.ts && tsx tests/weather-europe-cache.ts && tsx tests/weather-europe-failure-cache.ts && tsx tests/weather-chat-context.ts",
     "test:sea-outputs": "tsx tests/sea-output-e2e.ts",
     "db:push": "drizzle-kit push"
   },

@@ -14,6 +14,9 @@ declare module "http" {
   }
 }
 
+// Follow-up chat carries the complete text-only weather analysis, separately
+// bounded and validated by its route. Keep the default limit on other routes.
+app.use("/api/chat", express.json({ limit: "512kb" }));
 app.use(
   express.json({
     verify: (req, _res, buf) => {

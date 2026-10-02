@@ -39,6 +39,7 @@ import {
 
 import sailingAreasData from "../data/sailingareas.json" with { type: "json" };
 import windSystemsData from "../data/windsystems.json" with { type: "json" };
+import { buildWeatherChatUserContent, WEATHER_CHAT_CONTEXT_RULES } from "./weather-chat-context";
 
 function buildSailingAreasSummary(): string {
   const lines: string[] = [];
@@ -1521,7 +1522,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
   });
 
   app.post("/api/chat", async (req, res) => {
-    const { message, history, currentLocation } = req.body;
+    const { message, history, currentLocation, latestWeatherAnalysis } = req.body;
     debugLogRequestSeparator(
       `POST /api/chat — "${(message || "").slice(0, 80)}"`,
     );
@@ -1541,10 +1542,21 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
           typeof item !== "object" ||
           item === null ||
           typeof item.content !== "string" ||
+          !["user", "assistant"].includes(item.role) ||
           item.content.length > 2000
         ) {
           return res.status(400).json({ error: "Ungültiger Nachrichtenverlauf" });
         }
+      }
+    }
+    let weatherChatContent: string | null = null;
+    if (latestWeatherAnalysis != null) {
+      try {
+        weatherChatContent = buildWeatherChatUserContent(message, latestWeatherAnalysis);
+      } catch (error) {
+        return res.status(400).json({
+          error: error instanceof Error ? error.message : "Ungültiger Wetteranalyse-Kontext.",
+        });
       }
     }
 
@@ -1605,8 +1617,9 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
           }),
         );
 
-        let userContent = message;
-        let systemPrompt = GENERAL_CHAT_PROMPT;
+        let userContent = weatherChatContent ?? message;
+        let systemPrompt = GENERAL_CHAT_PROMPT + WEATHER_CHAT_CONTEXT_RULES;
+        systemPrompt += `\nAktueller Zeitpunkt (UTC): ${new Date().toISOString()}`;
         if (currentLocation) {
           systemPrompt += `\n\nWICHTIG: Es ist ein Ort aktiv (${currentLocation.displayName}, ${currentLocation.lat.toFixed(2)}°N, ${currentLocation.lon.toFixed(2)}°E). Beantworte allgemeine Segelfragen mit Bezug auf diesen Ort. Antworte kurz und präzise.`;
         }
