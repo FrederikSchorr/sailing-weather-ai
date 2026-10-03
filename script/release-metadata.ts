@@ -2,16 +2,22 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { nextRelease, validateRelease, type ReleaseBump, type ReleaseMetadata } from "../shared/release-utils";
 
-async function readReleaseFiles(root: string) {
-  const paths = ["shared/release.json", "package.json", "package-lock.json"]
-    .map(file => path.join(root, file));
-  const originals = await Promise.all(paths.map(file => readFile(file, "utf8")));
-  const [metadata, pkg, lock] = originals.map(text => JSON.parse(text));
+export function validateReleaseFiles(metadata: ReleaseMetadata, pkg: { version?: string },
+  lock: { version?: string; packages?: Record<string, { version?: string }> }) {
   validateRelease(metadata);
   if (pkg.version !== metadata.version || lock.version !== metadata.version
     || lock.packages?.[""]?.version !== metadata.version) {
     throw new Error("Release-, Paket- und Lockfile-Version stimmen nicht überein.");
   }
+  return metadata;
+}
+
+async function readReleaseFiles(root: string) {
+  const paths = ["shared/release.json", "package.json", "package-lock.json"]
+    .map(file => path.join(root, file));
+  const originals = await Promise.all(paths.map(file => readFile(file, "utf8")));
+  const [metadata, pkg, lock] = originals.map(text => JSON.parse(text));
+  validateReleaseFiles(metadata, pkg, lock);
   return { paths, originals, metadata: metadata as ReleaseMetadata, pkg, lock };
 }
 

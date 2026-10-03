@@ -10,7 +10,8 @@ if (args.length > 1 || !["patch", "minor", "major"].includes(bump)) {
   prepareRelease(process.cwd(), bump as ReleaseBump).then(release => {
     console.log(`Release vorbereitet: v${release.version} · ${formatReleaseMonth(release.preparedAt)}`);
     console.log("Für diesen Release nur einmal vorbereiten; bei Build-/Publish-Wiederholungen nicht erneut ausführen.");
-    console.log("Jetzt prüfen und anschließend über Publish veröffentlichen.");
+    console.log("Jetzt prüfen und committen; optional mit npm run release:tag lokal kennzeichnen (docs/releases.md).");
+    console.log("Tag-Push und Veröffentlichung sind separate, bewusst auszulösende Schritte.");
   }).catch(error => {
     console.error("Release-Vorbereitung fehlgeschlagen:", error.message);
     process.exitCode = 1;
