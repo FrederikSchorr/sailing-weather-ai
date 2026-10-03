@@ -1733,13 +1733,13 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
           sailingAreaObj = {
             name_de: deviceLocation.sailingArea,
             type: deviceLocation.type === "sea" ? "sea" : "lake",
-            // Revier identity supplies context/model/warnings, never a substitute GPS point.
+            // Same catalogued wind/wave point as a typed sailing-area request.
             coordinates: { lat: deviceLocation.lat, lon: deviceLocation.lon },
           };
         }
         cityObj = {
           name_de: deviceLocation.cityName!,
-          coordinates: { lat: deviceLocation.lat, lon: deviceLocation.lon },
+          coordinates: { lat: deviceLocation.cityLat!, lon: deviceLocation.cityLon! },
         };
         countryCode = deviceLocation.countryCode ?? "";
       } else if (cached) {

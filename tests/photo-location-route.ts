@@ -11,6 +11,7 @@ import { Completions } from "openai/resources/chat/completions/completions";
 import { registerRoutes } from "../server/routes";
 import { gpsHeic, gpsWebp } from "./fixtures/photo-images";
 import { readPhotoMetadata } from "../server/photo-metadata";
+import sailingAreas from "../data/sailingareas.json";
 
 // A real EXIF GPS IFD, parsed by the production parser, not mocked metadata.
 function gpsJpeg(lat: number, lon: number) {
@@ -110,6 +111,8 @@ try {
   const jpeg = gpsJpeg(47.924567891, 16.864567891);
   const tags = exifParser.create(jpeg).parse().tags;
   const point = { lat: tags.GPSLatitude, lon: tags.GPSLongitude };
+  const lake = sailingAreas["Österreich"].reviere.find(area => area.deutsch === "Neusiedler See (Österreich)")!;
+  const windPoint = { lat: lake.lat, lon: lake.lon };
   const previous = { displayName: "Vorheriges Revier", sailingArea: "Kvarner", lat: 45, lon: 14 };
   for (const name of ["gallery-photo.jpg", "camera-photo.jpg"]) {
     const events = await runPhoto(name, jpeg, previous);
@@ -119,7 +122,8 @@ try {
     assert.equal(location.type, "lake");
     assert.equal(location.source, "photo", "historic photo GPS must not become current device GPS");
     assert.equal(location.regionalModel, "czeAladin");
-    assert.deepEqual({ lat: location.lat, lon: location.lon }, point);
+    assert.deepEqual({ lat: location.lat, lon: location.lon }, windPoint,
+      "wind/waves use the catalogued sailing-area point, not recording GPS");
     assert.deepEqual({ lat: location.cityLat, lon: location.cityLon }, point);
     assert.equal(events.find(event => event.exifMeta).exifMeta.sailingArea, location.sailingArea);
   }
@@ -160,7 +164,7 @@ try {
     const events = await runPhoto(name, bytes, previous);
     const location = events.find(event => event.location).location;
     assert.equal(location.sailingArea, "Neusiedler See (Österreich)");
-    assert.deepEqual({ lat: location.lat, lon: location.lon }, expected);
+    assert.deepEqual({ lat: location.lat, lon: location.lon }, windPoint);
     assert.deepEqual({ lat: location.cityLat, lon: location.cityLon }, expected);
     assert.equal(location.source, "photo");
     assert.equal(events.find(event => event.exifMeta).exifMeta.sailingArea, location.sailingArea);

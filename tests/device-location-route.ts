@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { Messages } from "@anthropic-ai/sdk/resources/messages/messages";
 import type { Express } from "express";
 import { registerRoutes } from "../server/routes";
+import sailingAreas from "../data/sailingareas.json";
 import { METEONEWS_URL } from "../server/weather-europe";
 
 // Exercise the actual registered handlers, with no outbound AI/data requests.
@@ -115,7 +116,9 @@ try {
   assert.equal(lakeInitial.location.type, "lake");
   assert.equal(lakeInitial.location.cityName, "Weiden am See");
   assert.equal(lakeInitial.location.regionalModel, "czeAladin");
-  assert.deepEqual({ lat: lakeInitial.location.lat, lon: lakeInitial.location.lon }, point);
+  const lake = sailingAreas["Österreich"].reviere.find(area => area.deutsch === "Neusiedler See (Österreich)")!;
+  assert.deepEqual({ lat: lakeInitial.location.lat, lon: lakeInitial.location.lon },
+    { lat: lake.lat, lon: lake.lon }, "wind/waves use the same sailing-area point as text entry");
   assert.deepEqual({ lat: lakeInitial.location.cityLat, lon: lakeInitial.location.cityLon }, point);
   assert.equal(detectorCalls, 2);
   assert.equal(classifierCalls, 0);

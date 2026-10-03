@@ -47,8 +47,15 @@ assert.equal(lakeLocation.sailingArea, lake.revier.deutsch);
 assert.equal(lakeLocation.type, "lake");
 assert.equal(lakeLocation.regionalModel, "czeAladin");
 assert.equal(lakeLocation.cityName, "Weiden am See", "detector must not replace the device town");
-assert.deepEqual({ lat: lakeLocation.lat, lon: lakeLocation.lon }, weidenPoint);
+assert.deepEqual({ lat: lakeLocation.lat, lon: lakeLocation.lon }, { lat: lake.revier.lat, lon: lake.revier.lon });
 assert.deepEqual({ lat: lakeLocation.cityLat, lon: lakeLocation.cityLon }, weidenPoint);
+assert.notDeepEqual({ lat: lakeLocation.lat, lon: lakeLocation.lon }, weidenPoint,
+  "recognising a sailing area must separate its wind point from the local GPS point");
+const photoLocation = await resolveDeviceLocation(weidenPoint, undefined, weidenLookup, async () => lake, "photo");
+assert.deepEqual({ lat: photoLocation.lat, lon: photoLocation.lon }, { lat: lake.revier.lat, lon: lake.revier.lon },
+  "photo-derived locations use the same sailing-area point as device and text entry");
+assert.deepEqual({ lat: photoLocation.cityLat, lon: photoLocation.cityLon }, weidenPoint,
+  "the photo's local point must remain its exact original recording coordinates");
 const cityOnly = await resolveDeviceLocation(exact, undefined, lookup, async () => ({ kind: "city", city: "Wien" }));
 assert.equal(cityOnly.sailingArea, null, "a city outside an area remains a GPS forecast");
 const detectionFailure = await resolveDeviceLocation(exact, undefined, lookup, async () => { throw new Error("unavailable"); });
@@ -61,7 +68,8 @@ const sea = await resolveDeviceLocation(weidenPoint, undefined, async () => null
 assert.equal(sea.type, "sea");
 assert.equal(sea.countryCode, "HR");
 assert.equal(sea.cityName, "Punat");
-assert.deepEqual({ lat: sea.lat, lon: sea.lon }, weidenPoint);
+assert.deepEqual({ lat: sea.lat, lon: sea.lon }, { lat: lake.revier.lat, lon: lake.revier.lon });
+assert.deepEqual({ lat: sea.cityLat, lon: sea.cityLon }, weidenPoint);
 const offshore = await resolveDeviceLocation({ lat: 0, lon: 0 }, undefined, async () => null);
 assert.equal(offshore.lat, 0);
 assert.equal(offshore.lon, 0);

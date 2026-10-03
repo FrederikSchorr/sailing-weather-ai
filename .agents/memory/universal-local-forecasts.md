@@ -15,17 +15,11 @@ Keep the meteogram tied to the representative city coordinate while the wind cha
 
 **How to apply:** Preserve exact timestamp matching and field-specific three-hour aggregation, but allow city thunderstorm signals and sailing-area gust peaks to occur in different displayed columns.
 
-Device-triggered analyses are an intentional exception to representative-city selection: both local wind and the meteogram refer to the user's requested device point. Reverse geocoding supplies labels, not an alternative forecast position.
+Standort- und Fotoanalysen behalten zwei getrennte Koordinaten: Geräte-/Foto-GPS setzt den Ort für lokales Wetter und Meteogramm; ein erkanntes Segelrevier setzt den hinterlegten Revierpunkt für Wind und Welle, genauso wie bei Texteingabe.
 
-**Why:** The user asked to analyse device geodata instead of entering a place. Substituting a nearby harbour or city centre would change the requested target, particularly on the water.
+**Why:** Der Nutzer korrigierte ausdrücklich: „Wir haben doch immer 2 getrennte Koordinaten: Ort vs Segelrevier. Bei Standortanalyse soll diese den Ort setzen, aber Segelrevier so wie bei Texteingabe ermitteln.“ Er verlangte anschließend dieselbe Prüfung für Fotoupload. Beide Punkte auf GPS zu setzen war ein Fehler, keine gewünschte Ausnahme.
 
-**How to apply:** Keep the representative-city convention for typed place/revier analyses; do not apply it to device-coordinate requests.
-
-Device coordinates must still be assigned to an appropriate sailing area for regional models, warnings and interpretation; retaining GPS precision must not disable sailing-area recognition.
-
-**Why:** The user reported that the location button failed to recognise the Neusiedler See at Weiden am See. Exact forecast coordinates and sailing-area identity are independent requirements.
-
-**How to apply:** Recognise the area from the coordinates and reverse-geocoded place, while keeping both forecast points at the device coordinates rather than the area's midpoint.
+**How to apply:** Ortsname und Ortskoordinaten aus dem Standort beibehalten, Revieridentität und Revierkoordinaten unabhängig ermitteln. Ohne erkanntes Revier bleibt GPS auch der Windpunkt.
 
 Photo/video GPS describes the recording location, not necessarily the user's current device location. Without recording GPS, retain an existing active sailing area as chat context but never present it as extracted recording metadata.
 

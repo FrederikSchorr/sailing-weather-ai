@@ -2,7 +2,7 @@ import type { GeocodeResult } from "@shared/schema";
 import { deviceCoordinatesSchema, type DeviceCoordinates } from "@shared/device-location";
 import { reverseGeocode, getRegionalModelFallback, LAND_TO_COUNTRY_CODE, resolveWindyModel, type DetectLocationResult } from "./location";
 
-/** Reverse lookup supplies labels only; the requested point is never snapped. */
+/** Device/photo GPS supplies the local point; a recognised area supplies its own wind point. */
 export async function resolveDeviceLocation(
   coordinates: DeviceCoordinates,
   signal?: AbortSignal,
@@ -29,12 +29,13 @@ export async function resolveDeviceLocation(
     signal?.throwIfAborted();
   }
   const area = detected?.kind === "revier" ? detected : null;
+  const windPoint = area ? area.revier : { lat, lon };
   const regional = area ? resolveWindyModel(area.revier.windyModel) : getRegionalModelFallback(lat, lon);
   const coordinateLabel = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
   const cityName = resolved?.cityName || detected?.city || `${source === "photo" ? "Foto-Standort" : "Aktueller Standort"} (${coordinateLabel})`;
   const countryCode = resolved?.countryCode || area?.countryCode || "";
   return {
-    lat, lon, cityLat: lat, cityLon: lon,
+    lat: windPoint.lat, lon: windPoint.lon, cityLat: lat, cityLon: lon,
     displayName: resolved?.displayName || cityName,
     cityName,
     countryCode,
