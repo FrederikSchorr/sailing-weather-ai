@@ -11,14 +11,21 @@ const now = new Date("2026-10-03T06:00:00.000Z");
 const baseline = { version: "2.0.0", preparedAt: null };
 assert.equal(nextRelease(baseline, "patch", now).version, "2.0.1");
 assert.equal(nextRelease({ ...baseline, version: "2.0.1" }, "patch", now).version, "2.0.2");
+assert.equal(nextRelease({ ...baseline, version: "2.3.0" }, "patch", now).version, "2.3.1");
+assert.equal(nextRelease({ ...baseline, version: "2.3.1" }, "patch", now).version, "2.3.2");
 assert.equal(nextRelease({ ...baseline, version: "2.8.9" }, "minor", now).version, "2.9.0");
 assert.equal(nextRelease({ ...baseline, version: "2.8.9" }, "major", now).version, "3.0.0");
 assert.throws(() => validateRelease({ ...baseline, version: "2.0" }));
 assert.throws(() => validateRelease({ ...baseline, version: "2.01.0" }));
 assert.throws(() => validateRelease({ ...baseline, preparedAt: "invalid" }));
-assert.equal(formatReleaseMonth("2026-09-30T21:59:59.000Z"), "September 2026");
-assert.equal(formatReleaseMonth("2026-09-30T22:00:00.000Z"), "Oktober 2026");
-assert.equal(formatReleaseMonth("2026-12-31T23:00:00.000Z"), "Jänner 2027");
+assert.equal(formatReleaseMonth("2026-09-30T21:59:59.000Z"), "Sep 2026");
+assert.equal(formatReleaseMonth("2026-09-30T22:00:00.000Z"), "Okt 2026");
+assert.equal(formatReleaseMonth("2026-12-31T23:00:00.000Z"), "Jän 2027");
+for (let month = 0; month < 12; month++) {
+  const label = formatReleaseMonth(new Date(Date.UTC(2026, month, 15)).toISOString());
+  assert.match(label, /^\p{L}{3,4} 2026$/u);
+  assert.equal(label.includes("."), false);
+}
 assert.equal(releaseMonth, formatReleaseMonth(appRelease.preparedAt));
 
 const fixture = await mkdtemp(path.join(tmpdir(), "aiwindy-release-"));

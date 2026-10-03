@@ -41,6 +41,6 @@ export function formatReleaseMonth(preparedAt: string | null): string {
   if (preparedAt === null) return "Release nicht vorbereitet";
   validateRelease({ version: "0.0.0", preparedAt });
   return new Intl.DateTimeFormat("de-AT", {
-    timeZone: "Europe/Vienna", month: "long", year: "numeric",
-  }).format(new Date(preparedAt));
+    timeZone: "Europe/Vienna", month: "short", year: "numeric",
+  }).format(new Date(preparedAt)).replace(/\./g, "");
 }
