@@ -1,6 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { geocodeRequestSchema, type GeocodeResult } from "@shared/schema";
+import { deviceCoordinatesSchema } from "@shared/device-location";
+import { resolveDeviceLocation } from "./device-location";
 import OpenAI from "openai";
 import multer from "multer";
 import exifParser from "exif-parser";
@@ -1523,6 +1525,11 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
 
   app.post("/api/chat", async (req, res) => {
     const { message, history, currentLocation, latestWeatherAnalysis } = req.body;
+    const parsedCoordinates = deviceCoordinatesSchema.safeParse(req.body.deviceCoordinates);
+    if (req.body.deviceCoordinates !== undefined && !parsedCoordinates.success) {
+      return res.status(400).json({ error: "Ungültige Gerätekoordinaten. Bitte ermittle den Standort erneut." });
+    }
+    const deviceCoordinates = parsedCoordinates.success ? parsedCoordinates.data : undefined;
     debugLogRequestSeparator(
       `POST /api/chat — "${(message || "").slice(0, 80)}"`,
     );
@@ -1550,7 +1557,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       }
     }
     let weatherChatContent: string | null = null;
-    if (latestWeatherAnalysis != null) {
+    if (!deviceCoordinates && latestWeatherAnalysis != null) {
       try {
         weatherChatContent = buildWeatherChatUserContent(message, latestWeatherAnalysis);
       } catch (error) {
@@ -1591,7 +1598,9 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       const hasActiveLocation = !!currentLocation;
       const activeLocationName =
         currentLocation?.displayName?.split(",")[0]?.trim();
-      const classification = await classifyMessage(
+      const classification = deviceCoordinates
+        ? { type: "ANALYSE" as const, location: "Aktueller Gerätestandort" }
+        : await classifyMessage(
         message,
         hasActiveLocation,
         anthropic,
@@ -1673,7 +1682,12 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
 
       // ── Ortserkennung (mit persistentem Cache) ──────────────────────────
       const userInput = classification.location;
-      const cached = resolveSailingAreaAlias(userInput)
+      if (deviceCoordinates) sendSSE({ loadingStatus: "Ermittle Ortsnamen für deinen Standort" });
+      const deviceLocation = deviceCoordinates
+        ? await resolveDeviceLocation(deviceCoordinates, abortController.signal)
+        : null;
+      if (clientGone) return;
+      const cached = deviceCoordinates || resolveSailingAreaAlias(userInput)
         ? undefined
         : await getCachedLocation(userInput);
 
@@ -1681,7 +1695,13 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       let cityObj: import("./analysis-store.js").AnalysisPosition["city"];
       let countryCode: string;
 
-      if (cached) {
+      if (deviceLocation) {
+        cityObj = {
+          name_de: deviceLocation.cityName!,
+          coordinates: { lat: deviceLocation.lat, lon: deviceLocation.lon },
+        };
+        countryCode = deviceLocation.countryCode ?? "";
+      } else if (cached) {
         console.log(`[location-cache] HIT "${userInput}" → ${cached.city} (${cached.cityLat.toFixed(4)}, ${cached.cityLon.toFixed(4)})`);
         if (cached.sailingArea) {
           for (const [, landData] of Object.entries(sailingAreasData as Record<string, { reviere: Array<{ deutsch: string; typ: string; lat: number; lon: number; windyModel: string; [key: string]: unknown }> }>)) {
@@ -1765,7 +1785,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       const lat = coords.lat;
       const lon = coords.lon;
 
-      if (lat === 0 && lon === 0) {
+      if (!deviceCoordinates && lat === 0 && lon === 0) {
         console.warn(`[geocode] Failed to geocode "${cityObj.name_de}" — no coordinates available`);
         sendSSE({
           content: `Für „${userInput}" konnten keine Koordinaten ermittelt werden. Bitte versuche es mit einem konkreteren Ortsnamen (z.B. Stadt oder Hafen).`,
@@ -1780,7 +1800,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
           ([, v]) => v === countryCode,
         )?.[0] ?? countryCode;
 
-      const displayName = cached?.displayName ?? cityObj.name_de;
+      const displayName = deviceLocation?.displayName ?? cached?.displayName ?? cityObj.name_de;
       const revierModel = sailingAreaObj
         ? (() => {
             for (const [, landData] of Object.entries(sailingAreasData as Record<string, { reviere: Array<{ deutsch: string; windyModel: string; [key: string]: unknown }> }>)) {
@@ -1791,7 +1811,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
           })()
         : null;
       const countryModel = countryCode ? getModelForCountry(countryCode) : null;
-      const fallbackModel = (!revierModel && !countryModel && lat !== 0)
+      const fallbackModel = (!revierModel && !countryModel && (deviceCoordinates || lat !== 0))
         ? getRegionalModelFallback(lat, lon)
         : null;
       const regional = revierModel ?? countryModel ?? fallbackModel;
@@ -1832,6 +1852,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
         country,
         location: cityObj.name_de,
         userInput,
+        ...(deviceCoordinates ? { source: "device" as const } : {}),
       };
 
       // From this point on the analysis is a background job. Closing this

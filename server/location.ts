@@ -456,6 +456,7 @@ Antworte NUR mit der Kategorie (und bei ANALYSE dem Ortsnamen). Nichts anderes.`
 export async function reverseGeocode(
   lat: number,
   lon: number,
+  signal?: AbortSignal,
 ): Promise<{
   lat: number;
   lon: number;
@@ -468,7 +469,12 @@ export async function reverseGeocode(
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1&namedetails=1&accept-language=de,en`,
-      { headers: { "User-Agent": "WindyWeatherApp/1.0" } },
+      {
+        headers: { "User-Agent": "WindyWeatherApp/1.0" },
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(8000)])
+          : AbortSignal.timeout(8000),
+      },
     );
     if (!response.ok) return null;
 

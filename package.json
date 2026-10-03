@@ -1,6 +1,6 @@
 {
   "name": "rest-express",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -10,6 +10,7 @@
     "release:prepare": "tsx script/prepare-release.ts",
     "release:tag": "tsx script/tag-release.ts",
     "test:release": "tsx tests/release-metadata.ts && tsx tests/release-tag.ts",
+    "test:location": "tsx tests/device-location.ts && tsx tests/device-location-route.ts",
     "check": "tsc",
     "test:weather": "tsx tests/weather-regressions.ts && tsx tests/weather-europe-cache.ts && tsx tests/weather-europe-failure-cache.ts && tsx tests/weather-chat-context.ts",
     "test:sea-outputs": "tsx tests/sea-output-e2e.ts",

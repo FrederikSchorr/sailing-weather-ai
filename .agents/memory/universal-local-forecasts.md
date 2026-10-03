@@ -15,6 +15,12 @@ Keep the meteogram tied to the representative city coordinate while the wind cha
 
 **How to apply:** Preserve exact timestamp matching and field-specific three-hour aggregation, but allow city thunderstorm signals and sailing-area gust peaks to occur in different displayed columns.
 
+Device-triggered analyses are an intentional exception to representative-city selection: both local wind and the meteogram refer to the user's requested device point. Reverse geocoding supplies labels, not an alternative forecast position.
+
+**Why:** The user asked to analyse device geodata instead of entering a place. Substituting a nearby harbour or city centre would change the requested target, particularly on the water.
+
+**How to apply:** Keep the representative-city convention for typed place/revier analyses; do not apply it to device-coordinate requests.
+
 For national warning feeds, an explicitly empty warning field or provider-specific “none” marker is a checked all-clear; missing/malformed fields remain unavailable. Never send empty warning text to an LLM or accept its meta-response as a warning.
 
 **Why:** DHMZ returned an empty regional warning plus “Nema.” in its alternate feed; translating the empty field produced an English request for input that was then displayed as an official warning.

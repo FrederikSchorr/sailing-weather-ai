@@ -10,6 +10,9 @@ import CityMeteogram from "@/components/city-meteogram";
 import SeaWindForecast from "@/components/sea-wind-forecast";
 import { latestCompletedWeatherAnalysis } from "@shared/weather-chat-context";
 import { appRelease, releaseMonth } from "@shared/app-release";
+import type { DeviceCoordinates } from "@shared/device-location";
+import { useDeviceLocation } from "@/hooks/use-device-location";
+import { DeviceLocationControl, DeviceLocationFeedback } from "@/components/device-location-control";
 
 const KNMI_SOURCE_URL = "https://cdn.knmi.nl/knmi/map/page/weer/waarschuwingen_verwachtingen/weerkaarten";
 const MAX_CHAT_HISTORY_CONTENT = 2000;
@@ -337,7 +340,9 @@ function AnalysisView({ location, weatherEurope, weatherOutput, analysisJson, an
   return (
     <div data-testid="analysis-view">
       <div className="mb-3 text-sm font-medium text-foreground/80" data-testid="analysis-header">
-        {!location.sailingArea && !location.cityName ? (
+        {location.source === "device" ? (
+          <span>Wetteranalyse für deinen aktuellen Standort: {location.cityName}{location.countryCode && <>{" "}<CountryFlag countryCode={location.countryCode} /></>}</span>
+        ) : !location.sailingArea && !location.cityName ? (
           <span className="text-destructive">Weder Segelrevier noch Ort erkannt. Bitte versuche es mit einem konkreteren Ortsnamen.</span>
         ) : location.sailingArea ? (
           <span>Wetteranalyse für {location.cityName}, {location.sailingArea}{location.countryCode && <>{" "}<CountryFlag countryCode={location.countryCode} /></>}</span>
@@ -451,7 +456,7 @@ function AnalysisView({ location, weatherEurope, weatherOutput, analysisJson, an
                 )}
                 {sources.nationalWarningCenter?.status === "unsupported" && (
                   <li className="text-sm text-muted-foreground" data-testid="national-warning-status">
-                    Nationales Marine-Wetter-Warnzentrum für {sources.nationalWarningCenter.label ?? "dieses Land"} nicht angebunden
+                    Nationales Marine-Wetter-Warnzentrum für {sources.nationalWarningCenter.label || "diesen Standort"} nicht angebunden
                   </li>
                 )}
                 {[...sources.national, ...sources.europe].map((md, i) => (
@@ -498,6 +503,11 @@ export default function Home() {
     restoredAnalysis?.activeLocation ?? null,
   );
   const [isStreaming, setIsStreaming] = useState(false);
+  const streamBusyRef = useRef(false);
+  const cancelLocationRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    streamBusyRef.current = isStreaming;
+  }, [isStreaming]);
   const [uploadHintAfterMsgId, setUploadHintAfterMsgId] = useState<string | null>(null);
   const uploadHintShownRef = useRef(false);
   const hasUploadedRef = useRef(false);
@@ -595,7 +605,10 @@ export default function Home() {
     messageSources,
   ]);
 
-  const sendMessage = useCallback((userMessage: string) => {
+  const sendMessage = useCallback((userMessage: string, deviceCoordinates?: DeviceCoordinates) => {
+    if (streamBusyRef.current) return;
+    streamBusyRef.current = true;
+    cancelLocationRef.current?.();
     setIsStreaming(true);
     const assistantId = `assistant-${Date.now()}`;
     let processed = 0;
@@ -868,15 +881,26 @@ export default function Home() {
 
     xhr.send(JSON.stringify({
       message: userMessage,
+      ...(deviceCoordinates ? { deviceCoordinates } : {}),
       history: chatHistory,
-      currentLocation: activeLocation,
-      latestWeatherAnalysis: latestCompletedWeatherAnalysis(
+      currentLocation: deviceCoordinates ? null : activeLocation,
+      latestWeatherAnalysis: deviceCoordinates ? null : latestCompletedWeatherAnalysis(
         messages,
         messageAnalysisJson,
         messageWeatherOutput,
       ),
     }));
   }, [messages, activeLocation, messageAnalysisJson, messageWeatherOutput]);
+
+  const deviceLocation = useDeviceLocation(isStreaming, coordinates => {
+    if (streamBusyRef.current) return;
+    const userMessage = "Wetteranalyse für meinen aktuellen Standort";
+    setMessages(prev => [...prev, {
+      id: `user-${Date.now()}`, role: "user", content: userMessage,
+    }]);
+    sendMessage(userMessage, coordinates);
+  });
+  cancelLocationRef.current = deviceLocation.cancel;
 
   useEffect(() => {
     const reconnectVisibleAnalysis = () => {
@@ -899,7 +923,9 @@ export default function Home() {
   }, []);
 
   const handleFileUpload = useCallback((file: File) => {
-    if (isStreaming) return;
+    if (isStreaming || streamBusyRef.current) return;
+    streamBusyRef.current = true;
+    cancelLocationRef.current?.();
     setIsStreaming(true);
     const assistantId = `assistant-${Date.now()}`;
     const userId = `user-${Date.now()}`;
@@ -1074,7 +1100,7 @@ export default function Home() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed || isStreaming || streamBusyRef.current) return;
 
     setMessages((prev) => [
       ...prev,
@@ -1313,7 +1339,7 @@ export default function Home() {
                         data-testid="button-confirm-location-yes"
                         disabled={isStreaming}
                         onClick={() => {
-                          if (isStreaming) return;
+                          if (isStreaming || streamBusyRef.current) return;
                           const locText = photoHint.countryCode
                             ? `${photoHint.locationName}, ${photoHint.countryCode}`
                             : photoHint.locationName;
@@ -1357,7 +1383,10 @@ export default function Home() {
 
       <div className="border-t border-border bg-card/50 backdrop-blur-sm shrink-0 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-2xl mx-auto">
-          <form onSubmit={handleSubmit} className="px-4 py-3 flex items-center gap-2">
+          <div className="px-4">
+            <DeviceLocationFeedback locating={deviceLocation.locating} error={deviceLocation.error} />
+          </div>
+          <form onSubmit={handleSubmit} className="px-3 py-3 flex items-center gap-1 sm:px-4 sm:gap-2">
             <input
               type="file"
               accept="image/*,video/*"
@@ -1399,7 +1428,7 @@ export default function Home() {
             >
               <Image className="w-4 h-4" />
             </Button>
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -1409,6 +1438,13 @@ export default function Home() {
                 data-testid="input-message"
               />
             </div>
+            <DeviceLocationControl
+              locating={deviceLocation.locating}
+              disabled={isStreaming}
+              error={deviceLocation.error}
+              onLocate={deviceLocation.locate}
+              onCancel={deviceLocation.cancel}
+            />
             <Button type="submit" size="icon" disabled={!input.trim() || isStreaming} data-testid="button-send">
               <Send className="w-4 h-4" />
             </Button>

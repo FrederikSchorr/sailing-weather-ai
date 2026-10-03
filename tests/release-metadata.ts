@@ -13,6 +13,7 @@ assert.equal(nextRelease(baseline, "patch", now).version, "2.0.1");
 assert.equal(nextRelease({ ...baseline, version: "2.0.1" }, "patch", now).version, "2.0.2");
 assert.equal(nextRelease({ ...baseline, version: "2.3.0" }, "patch", now).version, "2.3.1");
 assert.equal(nextRelease({ ...baseline, version: "2.3.1" }, "patch", now).version, "2.3.2");
+assert.equal(nextRelease({ ...baseline, version: "2.3.0" }, "minor", now).version, "2.4.0");
 assert.equal(nextRelease({ ...baseline, version: "2.8.9" }, "minor", now).version, "2.9.0");
 assert.equal(nextRelease({ ...baseline, version: "2.8.9" }, "major", now).version, "3.0.0");
 assert.throws(() => validateRelease({ ...baseline, version: "2.0" }));
