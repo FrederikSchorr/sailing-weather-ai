@@ -9,6 +9,7 @@ import type { ChatMessage, GeocodeResult, WeatherEuropeSSE, WeatherOutputData } 
 import CityMeteogram from "@/components/city-meteogram";
 import SeaWindForecast from "@/components/sea-wind-forecast";
 import { latestCompletedWeatherAnalysis } from "@shared/weather-chat-context";
+import { appRelease, releaseMonth } from "@shared/app-release";
 
 const KNMI_SOURCE_URL = "https://cdn.knmi.nl/knmi/map/page/weer/waarschuwingen_verwachtingen/weerkaarten";
 const MAX_CHAT_HISTORY_CONTENT = 2000;
@@ -1096,9 +1097,9 @@ export default function Home() {
                   <Info className="w-5 h-5" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-56 p-3 text-sm" data-testid="popover-info">
+              <PopoverContent align="end" className="w-56 max-w-[calc(100vw-2rem)] p-3 text-sm" data-testid="popover-info">
                 <div className="space-y-2">
-                  <p className="font-semibold">aiWindy <span className="font-normal text-muted-foreground">v2.0 · April 2025</span></p>
+                  <p className="font-semibold">aiWindy <span className="font-normal text-muted-foreground" data-testid="text-app-release">v{appRelease.version} · {releaseMonth}</span></p>
                   <div className="flex items-center gap-2 text-muted-foreground text-xs">
                     <span>© Frederik Schorr</span>
                     <a href="https://github.com/FrederikSchorr/aiwindy" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" aria-label="GitHub" data-testid="link-github">

@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { saveAnalysis } from "./cache-db.js";
+import { appRelease } from "../shared/app-release";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -317,7 +318,7 @@ export function createAnalysis(position: AnalysisPosition): {
   const data: AnalysisJson = {
     meta: {
       app: "aiWindy",
-      version: "2.0",
+      version: appRelease.version,
       website: "https://aiwindy.schorr.wien",
       github: "https://github.com/FrederikSchorr/aiwindy",
       copyright: "© Frederik Schorr",
