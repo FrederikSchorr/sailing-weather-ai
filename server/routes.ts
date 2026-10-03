@@ -98,7 +98,7 @@ import {
   preprocessNationalWeather,
   preprocessLocalWeather,
 } from "./weather-national.js";
-import { generateWeatherOutput } from "./weather-output.js";
+import { generateWeatherOutput, WeatherInterpretationError } from "./weather-output.js";
 import { resolveLocalForecast } from "./weather-local-forecast.js";
 
 const execFileAsync = promisify(execFile);
@@ -1054,7 +1054,19 @@ async function runAnalysisJob(context: AnalysisJobContext): Promise<void> {
       () => publish({
         loadingStatus: "Validiere Wetterinterpretation …",
       }),
-    );
+    ).catch(error => {
+      if (error instanceof WeatherInterpretationError) {
+        Object.assign(analysis.data.weatherOutput, error.partialOutput);
+        analysis.save();
+        publish({
+          weatherOutput: error.partialOutput,
+          sources: analysis.data.sources,
+          analysisJson: analysis.getExportData(),
+          analysisFileName: path.basename(analysis.filePath),
+        });
+      }
+      throw error;
+    });
     Object.assign(analysis.data.weatherOutput, weatherOutput);
     analysis.save();
     publish({

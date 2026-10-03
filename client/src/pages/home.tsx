@@ -17,6 +17,8 @@ import { DeviceLocationControl, DeviceLocationFeedback } from "@/components/devi
 const KNMI_SOURCE_URL = "https://cdn.knmi.nl/knmi/map/page/weer/waarschuwingen_verwachtingen/weerkaarten";
 const MAX_CHAT_HISTORY_CONTENT = 2000;
 
+import { AnalysisErrorNotice } from "@/components/analysis-error-notice";
+
 interface AnalysisSources {
   windy: string[];
   national: string[];
@@ -366,11 +368,7 @@ function AnalysisView({ location, weatherEurope, weatherOutput, analysisJson, an
         <BounceLoader />
       )}
 
-      {hasError && !resolvedWeatherOutput && (
-        <p className="text-sm text-destructive mt-3" data-testid="text-analysis-error">
-          {typeof hasError === "string" ? hasError : "Fehler bei der Datenabfrage. Die Analyse konnte nicht vollständig geladen werden."}
-        </p>
-      )}
+      <AnalysisErrorNotice error={hasError} />
 
       {!weatherEurope && isStreaming && !hasError && loadingStatus && <StatusLoader text={loadingStatus} />}
 

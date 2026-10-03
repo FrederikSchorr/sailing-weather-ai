@@ -5,6 +5,7 @@
  */
 
 import assert from "node:assert/strict";
+import { AnalysisErrorNotice } from "../client/src/components/analysis-error-notice";
 import Anthropic from "@anthropic-ai/sdk";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -25,6 +26,7 @@ import {
   ensureWarningFirst,
   ensureWindForecastIcons,
   generateWeatherOutput,
+  WeatherInterpretationError,
   buildWindScaffold,
   combineWindAndGustMentions,
   containsPastTodayContent,
@@ -1024,6 +1026,51 @@ async function testInterpretationPromptContract(): Promise<void> {
   assert.match(prompt, /Abschnitt 4 genau 3/);
   assert.match(prompt, /Genau 4 Prognosebullets/);
   assert.match(prompt, /insgesamt höchstens 5 Bullets/);
+
+  const warningAnalysis = structuredClone(analysis);
+  warningAnalysis.sources.nationalWarningCenter = { status: "integrated", label: "HNMS" };
+  warningAnalysis.weatherPreprocessed.local.warnings = {
+    checked: true,
+    source: "HNMS",
+    text_de: "Aktuell Sturmwarnung von HNMS:\nGewittermöglichkeit im Norden und Osten",
+  };
+  const beforeWarningCalls = callCount;
+  const warningOutput = await generateWeatherOutput(warningAnalysis, anthropic);
+  assert.equal(callCount, beforeWarningCalls + 1,
+    "multiline HNMS bulletins rendered as one bullet must pass on the first attempt");
+  assert.match((warningOutput.windWaves as any).text,
+    /^- ⚠️ Aktuell Sturmwarnung von HNMS: Gewittermöglichkeit im Norden und Osten\n- Heute/);
+  assert.equal((warningOutput.windWaves as any).text.split("\n").length, 5);
+
+  let failedAttempts = 0;
+  const terminalAnthropic = {
+    messages: { create: async () => {
+      failedAttempts++;
+      return { content: [{ type: "text", text: [
+        "===airPressureMasses===", (output.airPressureMasses as any).text,
+        "===weatherFront===", (output.weatherFront as any).text,
+        "===windWaves===", "- Heute: Ungültiger Wind-Einzelwert 24 kt.",
+        "===cloudsRain===", (output.cloudsRain as any).text, "===END===",
+      ].join("\n") }] };
+    } },
+  } as unknown as Anthropic;
+  await assert.rejects(generateWeatherOutput(warningAnalysis, terminalAnthropic), error => {
+    assert.ok(error instanceof WeatherInterpretationError);
+    assert.equal(failedAttempts, 3, "a terminal error must stop after three attempts");
+    assert.equal(error.partialOutput.airPressureMasses.text, (output.airPressureMasses as any).text);
+    assert.equal(error.partialOutput.weatherFront.text, (output.weatherFront as any).text);
+    assert.equal(error.partialOutput.cloudsRain.text, (output.cloudsRain as any).text);
+    assert.equal(error.partialOutput.windWaves.text,
+      "- ⚠️ Aktuell Sturmwarnung von HNMS: Gewittermöglichkeit im Norden und Osten",
+      "retain the complete authoritative warning, not invalid model prose");
+    assert.equal(error.partialOutput.windWaves.source, "HNMS");
+    assert.doesNotMatch(error.partialOutput.windWaves.text!, /24 kt/);
+    const alert = renderToStaticMarkup(createElement(AnalysisErrorNotice, { error: error.message }));
+    assert.match(alert, /role="alert"/);
+    assert.match(alert, /nach 3 Versuchen unvollständig/);
+    return true;
+  });
+  assert.equal(renderToStaticMarkup(createElement(AnalysisErrorNotice, { error: false })), "");
 
   const retryRequests: any[] = [];
   const retryResponses = [

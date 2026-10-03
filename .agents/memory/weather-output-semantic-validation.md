@@ -52,3 +52,9 @@ When Today starts at the current full hour but the request was made later in tha
 **Why:** Hourly forecast data prompted phrases such as “ab 20 Uhr” at 20:10, which technically included elapsed time and repeatedly exhausted correction attempts.
 
 **How to apply:** Normalize only an `ab` boundary in the current hour to “ab jetzt”; continue rejecting references to earlier hours and completed day periods.
+
+Count rendered warning bullets, not lines in the original national bulletin. Preserve independently validated interpretations and authoritative warnings if other sections still fail after the correction limit; never present rejected model prose as valid.
+
+**Why:** A multiline HNMS bulletin became one display bullet, but the validator still subtracted its original line count. A valid Athens forecast was repeatedly rejected; a truthy but empty output object then hid the terminal error.
+
+**How to apply:** Keep formatting and validation consistent about warning cardinality. Deliver verified partial results with an explicit failure status and show the error even when charts, exports, or partial interpretations already exist.

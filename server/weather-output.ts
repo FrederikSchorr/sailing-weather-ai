@@ -1,12 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
 import windSystemsJson from "../data/windsystems.json" with { type: "json" };
 import type { AnalysisJson } from "./analysis-store.js";
+import type { WeatherOutputData } from "@shared/schema";
 import {
   buildSection4WeatherContext,
   getOpenMeteoTimezone,
 } from "./weather-open-meteo.js";
 
 // ── Wind systems ──────────────────────────────────────────────────────────────
+
+export class WeatherInterpretationError extends Error {
+  constructor(readonly partialOutput: WeatherOutputData) {
+    super("Die Wetterinterpretation war nach 3 Versuchen unvollständig. Bereits geprüfte Abschnitte bleiben erhalten; fehlende Interpretationen bitte erneut anfordern.");
+    this.name = "WeatherInterpretationError";
+  }
+}
 
 type WindSystem = { country: string; winds: Record<string, unknown>[] };
 
@@ -529,18 +537,15 @@ ${buildSection4Rules(todayLabel, tomorrowLabel, forecastOverviewLabel, currentLo
     const warning = analysis.weatherPreprocessed.local.warnings as {
       checked?: unknown;
       text_de?: unknown;
+      source?: unknown;
     } | undefined;
+    // ensureWarningFirst flattens the entire authoritative bulletin into ONE
+    // bullet. Count rendered warning bullets, never the source's text lines.
     const expectedWarningLineCount = (
       warningCenter
       && warningCenter.status !== "unsupported"
     )
-      ? (
-        warning?.checked === true
-        && typeof warning.text_de === "string"
-        && warning.text_de.trim()
-          ? warning.text_de.trim().split(/\r?\n/).filter(Boolean).length
-          : 1
-      )
+      ? 1
       : 0;
     const finalizeWindText = (text: string | undefined): string | null => {
       if (!text) return null;
@@ -777,7 +782,32 @@ Jede Prognosezeile beginnt mit "- ". Keine vorgeschriebene Prognosezeile des zu 
           ),
         },
       });
-      throw new Error("Die Wetterinterpretation war unvollständig. Bitte erneut versuchen.");
+      const source = "claude-sonnet-4-6";
+      const air = normalizeSection1Icons(parsed?.airPressureMasses ?? null);
+      const fronts = normalizeSection2Icons(parsed?.weatherFront ?? null, locationLabel);
+      const validWind = hasCanonicalWindForecast(
+        windWavesText ?? undefined,
+        { todayLabel, tomorrowLabel, dayAfterTomorrowLabel, forecastTailLabel },
+        expectedWarningLineCount,
+      ) && hasValidWindValueFormat(windWavesText ?? undefined)
+        && hasConciseWindInterpretation(windWavesText ?? undefined, expectedWarningLineCount)
+        && !containsPastTodayContent(windWavesText ?? undefined, currentLocal.hour, currentLocal.minute);
+      const validCloud = Boolean(cloudsRainText)
+        && hasCompleteCloudForecast(cloudsRainText!)
+        && !hasForbiddenSection4Content(cloudsRainText!)
+        && !containsPastTodayContent(cloudsRainText!, currentLocal.hour, currentLocal.minute);
+      // Invalid model prose stays hidden, but a verified national warning must
+      // remain visible even when the model's wind interpretation fails.
+      const warningSource = warning?.source;
+      throw new WeatherInterpretationError({
+        airPressureMasses: { source, text: hasTwoSubstantiveBullets(air) ? air : null },
+        weatherFront: { source, text: hasTwoSubstantiveBullets(fronts) ? fronts : null },
+        windWaves: {
+          source: validWind ? source : typeof warningSource === "string" ? warningSource : "Nationale Warnquelle",
+          text: validWind ? windWavesText : ensureWarningFirst(analysis, null),
+        },
+        cloudsRain: { source, text: validCloud ? cloudsRainText : null },
+      });
     }
 
     const source = "claude-sonnet-4-6";
