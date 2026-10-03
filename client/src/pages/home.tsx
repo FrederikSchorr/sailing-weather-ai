@@ -1387,6 +1387,13 @@ export default function Home() {
             <DeviceLocationFeedback locating={deviceLocation.locating} error={deviceLocation.error} />
           </div>
           <form onSubmit={handleSubmit} className="px-3 py-3 flex items-center gap-1 sm:px-4 sm:gap-2">
+            <DeviceLocationControl
+              locating={deviceLocation.locating}
+              disabled={isStreaming}
+              error={deviceLocation.error}
+              onLocate={deviceLocation.locate}
+              onCancel={deviceLocation.cancel}
+            />
             <input
               type="file"
               accept="image/*,video/*"
@@ -1438,13 +1445,6 @@ export default function Home() {
                 data-testid="input-message"
               />
             </div>
-            <DeviceLocationControl
-              locating={deviceLocation.locating}
-              disabled={isStreaming}
-              error={deviceLocation.error}
-              onLocate={deviceLocation.locate}
-              onCancel={deviceLocation.cancel}
-            />
             <Button type="submit" size="icon" disabled={!input.trim() || isStreaming} data-testid="button-send">
               <Send className="w-4 h-4" />
             </Button>
