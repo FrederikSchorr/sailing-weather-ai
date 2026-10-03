@@ -52,6 +52,7 @@ interface AnalysisJobState {
 }
 
 interface UploadPreview {
+  sailingArea?: string | null;
   url: string;
   thumbnailUrl?: string;
   time?: string | null;
@@ -341,7 +342,7 @@ function AnalysisView({ location, weatherEurope, weatherOutput, analysisJson, an
     <div data-testid="analysis-view">
       <div className="mb-3 text-sm font-medium text-foreground/80" data-testid="analysis-header">
         {location.source === "device" ? (
-          <span>Wetteranalyse für deinen aktuellen Standort: {location.cityName}{location.countryCode && <>{" "}<CountryFlag countryCode={location.countryCode} /></>}</span>
+          <span>Wetteranalyse für deinen aktuellen Standort: {location.cityName}{location.sailingArea && <>, {location.sailingArea}</>}{location.countryCode && <>{" "}<CountryFlag countryCode={location.countryCode} /></>}</span>
         ) : !location.sailingArea && !location.cityName ? (
           <span className="text-destructive">Weder Segelrevier noch Ort erkannt. Bitte versuche es mit einem konkreteren Ortsnamen.</span>
         ) : location.sailingArea ? (
@@ -1006,7 +1007,7 @@ export default function Home() {
               photoExifMeta = { locationName: data.exifMeta.locationName ?? null, countryCode: data.exifMeta.countryCode ?? null };
               setUploadPreviews(prev => ({
                 ...prev,
-                [userId]: { ...prev[userId], time: data.exifMeta.time, locationName: data.exifMeta.locationName, countryCode: data.exifMeta.countryCode }
+                [userId]: { ...prev[userId], time: data.exifMeta.time, locationName: data.exifMeta.locationName, countryCode: data.exifMeta.countryCode, sailingArea: data.exifMeta.sailingArea }
               }));
             }
             if (data.videoMeta) {
@@ -1023,6 +1024,7 @@ export default function Home() {
                   time: data.videoMeta.time,
                   locationName: data.videoMeta.locationName,
                   countryCode: data.videoMeta.countryCode,
+                    sailingArea: data.videoMeta.sailingArea,
                 }
               }));
             }
@@ -1260,6 +1262,11 @@ export default function Home() {
                             {preview.time && (
                               <span className="text-xs text-muted-foreground">
                                 {formatExifDate(preview.time)}
+                              </span>
+                            )}
+                            {preview.sailingArea && (
+                              <span className="text-xs text-muted-foreground" data-testid="upload-sailing-area">
+                                Segelrevier: {preview.sailingArea}
                               </span>
                             )}
                           </div>

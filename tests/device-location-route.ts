@@ -56,12 +56,22 @@ let detectorCalls = 0;
     classifierCalls++;
     return { content: [{ type: "text", text: "CHAT" }] };
   }
-  if (String(payload.messages?.[0]?.content).startsWith("Ort:")) detectorCalls++;
+  if (String(payload.messages?.[0]?.content).startsWith("Ort:")) {
+    detectorCalls++;
+    return { content: [{ type: "text", text: JSON.stringify({
+      sailingArea: String(payload.messages[0].content).includes("Weiden") ? "Neusiedler See (Österreich)" : null,
+      city: String(payload.messages[0].content).includes("Weiden") ? "Neusiedl am See" : null,
+    }) }] };
+  }
   return { content: [{ type: "text", text: "Normale Chatantwort" }] };
 };
 globalThis.fetch = async input => {
   const url = String(input);
   if (url.includes("nominatim.openstreetmap.org/reverse")) {
+    if (url.includes("lat=47.924567891")) return new Response(JSON.stringify({
+      display_name: "Weiden am See, Österreich",
+      address: { village: "Weiden am See", country_code: "at" },
+    }));
     return new Response(JSON.stringify({ error: "Unable to geocode" }), { status: 200 });
   }
   if (url === METEONEWS_URL) return weatherGate;
@@ -83,7 +93,7 @@ try {
   assert.equal(initial.location.regionalModel, "gfs");
   assert.equal(initial.location.source, "device");
   assert.equal(classifierCalls, 0);
-  assert.equal(detectorCalls, 0);
+  assert.equal(detectorCalls, 1, "device entry must recognise the sailing area, but bypass classification");
 
   // Cancel before releasing the mocked weather provider.
   const cancelRequest = request({});
@@ -93,6 +103,26 @@ try {
   await handlers.get("delete /api/analysis/:jobId")!(cancelRequest, cancellation);
   assert.equal(cancellation.statusCode, 204);
   assert.ok(res.events.some(event => event.done));
+  const lakeResponse = response();
+  const point = { lat: 47.924567891, lon: 16.864567891 };
+  await chat(request({
+    message: "Wetteranalyse für meinen aktuellen Standort",
+    deviceCoordinates: point,
+  }), lakeResponse);
+  const lakeInitial = lakeResponse.events.find(event => event.location);
+  assert.ok(lakeInitial?.analysisJobId);
+  assert.equal(lakeInitial.location.sailingArea, "Neusiedler See (Österreich)");
+  assert.equal(lakeInitial.location.type, "lake");
+  assert.equal(lakeInitial.location.cityName, "Weiden am See");
+  assert.equal(lakeInitial.location.regionalModel, "czeAladin");
+  assert.deepEqual({ lat: lakeInitial.location.lat, lon: lakeInitial.location.lon }, point);
+  assert.deepEqual({ lat: lakeInitial.location.cityLat, lon: lakeInitial.location.cityLon }, point);
+  assert.equal(detectorCalls, 2);
+  assert.equal(classifierCalls, 0);
+  const cancelLake = request({});
+  cancelLake.params.jobId = lakeInitial.analysisJobId;
+  cancelLake.get = () => lakeInitial.analysisToken;
+  await handlers.get("delete /api/analysis/:jobId")!(cancelLake, response());
   releaseWeather(new Response(`<div class="bulletin-wrap">${"Wetterlage ".repeat(70)}</div>`));
   await new Promise(resolve => setTimeout(resolve, 20));
 
@@ -106,4 +136,4 @@ try {
   globalThis.fetch = originalFetch;
   Messages.prototype.create = originalCreate;
 }
-console.log("Device route tests passed (invalid requests, direct zero-coordinate job, no stale context/classification/detection, cancellation and ordinary text chat).");
+console.log("Device route tests passed (validation, zero coordinates, sailing-area recognition with exact GPS/model/town, no stale context/classification, cancellation and ordinary text chat).");

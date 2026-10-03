@@ -21,6 +21,18 @@ Device-triggered analyses are an intentional exception to representative-city se
 
 **How to apply:** Keep the representative-city convention for typed place/revier analyses; do not apply it to device-coordinate requests.
 
+Device coordinates must still be assigned to an appropriate sailing area for regional models, warnings and interpretation; retaining GPS precision must not disable sailing-area recognition.
+
+**Why:** The user reported that the location button failed to recognise the Neusiedler See at Weiden am See. Exact forecast coordinates and sailing-area identity are independent requirements.
+
+**How to apply:** Recognise the area from the coordinates and reverse-geocoded place, while keeping both forecast points at the device coordinates rather than the area's midpoint.
+
+Photo/video GPS describes the recording location, not necessarily the user's current device location. Without recording GPS, retain an existing active sailing area as chat context but never present it as extracted recording metadata.
+
+**Why:** Gallery uploads can be historical or taken elsewhere, and camera uploads can lose GPS metadata. The user explicitly requested verifying sailing-area recognition for both gallery and camera paths.
+
+**How to apply:** Recognise sailing areas from genuine recording coordinates, distinguish them from a live device position, and keep cloud-image interpretation independent of external forecast context.
+
 For national warning feeds, an explicitly empty warning field or provider-specific “none” marker is a checked all-clear; missing/malformed fields remain unavailable. Never send empty warning text to an LLM or accept its meta-response as a warning.
 
 **Why:** DHMZ returned an empty regional warning plus “Nema.” in its alternate feed; translating the empty field produced an English request for input that was then displayed as an official warning.

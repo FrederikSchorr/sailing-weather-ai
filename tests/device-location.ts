@@ -5,7 +5,8 @@ import { deviceCoordinatesSchema } from "../shared/device-location";
 import { resolveDeviceLocation } from "../server/device-location";
 import { requestDevicePosition } from "../client/src/lib/device-location";
 import { DeviceLocationControl, DeviceLocationFeedback } from "../client/src/components/device-location-control";
-import type { reverseGeocode } from "../server/location";
+import type { reverseGeocode, RevierResult } from "../server/location";
+import sailingAreas from "../data/sailingareas.json";
 
 for (const coordinates of [{ lat: 0, lon: 0 }, { lat: -90, lon: 180 }, { lat: 90, lon: -180 }]) {
   assert.ok(deviceCoordinatesSchema.safeParse(coordinates).success);
@@ -28,6 +29,39 @@ assert.deepEqual({ lat: location.cityLat, lon: location.cityLon }, exact);
 assert.equal(location.sailingArea, null);
 assert.equal(location.source, "device");
 assert.equal(location.cityName, "Wien");
+const weidenPoint = { lat: 47.924567891, lon: 16.864567891 };
+const lake: RevierResult = {
+  kind: "revier", land: "Österreich", countryCode: "AT", city: "Neusiedl am See",
+  revier: sailingAreas["Österreich"].reviere.find(r => r.deutsch === "Neusiedler See (Österreich)")! as RevierResult["revier"],
+};
+const weidenLookup: typeof reverseGeocode = async () => ({
+  lat: 47.9, lon: 16.8, cityName: "Weiden am See", displayName: "Weiden am See, Österreich",
+  countryCode: "AT", regionalModel: "iconEu", regionalModelLabel: "ICON",
+});
+const lakeLocation = await resolveDeviceLocation(weidenPoint, undefined, weidenLookup, async input => {
+  assert.match(input, /Weiden am See/);
+  assert.ok(input.includes(String(weidenPoint.lat)) && input.includes(String(weidenPoint.lon)));
+  return lake;
+});
+assert.equal(lakeLocation.sailingArea, lake.revier.deutsch);
+assert.equal(lakeLocation.type, "lake");
+assert.equal(lakeLocation.regionalModel, "czeAladin");
+assert.equal(lakeLocation.cityName, "Weiden am See", "detector must not replace the device town");
+assert.deepEqual({ lat: lakeLocation.lat, lon: lakeLocation.lon }, weidenPoint);
+assert.deepEqual({ lat: lakeLocation.cityLat, lon: lakeLocation.cityLon }, weidenPoint);
+const cityOnly = await resolveDeviceLocation(exact, undefined, lookup, async () => ({ kind: "city", city: "Wien" }));
+assert.equal(cityOnly.sailingArea, null, "a city outside an area remains a GPS forecast");
+const detectionFailure = await resolveDeviceLocation(exact, undefined, lookup, async () => { throw new Error("unavailable"); });
+assert.equal(detectionFailure.sailingArea, null);
+assert.deepEqual({ lat: detectionFailure.lat, lon: detectionFailure.lon }, exact);
+const sea = await resolveDeviceLocation(weidenPoint, undefined, async () => null, async () => ({
+  ...lake, countryCode: "HR", land: "Kroatien", city: "Punat",
+  revier: { ...lake.revier, deutsch: "Kvarner", typ: "meer", windyModel: "iconEu" },
+}));
+assert.equal(sea.type, "sea");
+assert.equal(sea.countryCode, "HR");
+assert.equal(sea.cityName, "Punat");
+assert.deepEqual({ lat: sea.lat, lon: sea.lon }, weidenPoint);
 const offshore = await resolveDeviceLocation({ lat: 0, lon: 0 }, undefined, async () => null);
 assert.equal(offshore.lat, 0);
 assert.equal(offshore.lon, 0);
@@ -37,6 +71,11 @@ assert.equal(offshore.regionalModel, "gfs");
 const stopped = new AbortController();
 stopped.abort();
 await assert.rejects(resolveDeviceLocation(exact, stopped.signal, lookup), { name: "AbortError" });
+const stopDetection = new AbortController();
+await assert.rejects(resolveDeviceLocation(exact, stopDetection.signal, lookup, async () => {
+  stopDetection.abort();
+  throw new DOMException("Abgebrochen", "AbortError");
+}), { name: "AbortError" });
 
 function fakeLocation() {
   let success: PositionCallback | undefined;

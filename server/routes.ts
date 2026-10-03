@@ -21,7 +21,6 @@ import {
   getWindySources,
   classifyMessage,
   geocodeLocation,
-  reverseGeocode,
   getCachedLocation,
   setCachedLocation,
   getRegionalModelFallback,
@@ -1286,11 +1285,12 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
           const exifData = parser.parse();
           const tags = exifData.tags;
 
-          if (tags.GPSLatitude && tags.GPSLongitude) {
-            exifLocation = {
+          const gps = deviceCoordinatesSchema.safeParse({
               lat: tags.GPSLatitude as number,
               lon: tags.GPSLongitude as number,
-            };
+          });
+          if (gps.success) {
+            exifLocation = gps.data;
           }
 
           if (tags.DateTimeOriginal) {
@@ -1312,21 +1312,27 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       let metadataInfo = "";
       let exifLocationName: string | null = null;
       let exifCountryCode: string | null = null;
+      let exifSailingArea: string | null = null;
+      if (exifLocation && !deviceCoordinatesSchema.safeParse(exifLocation).success) exifLocation = null;
       if (exifLocation) {
         sendSSE({
           status: `📍 GPS gefunden: ${exifLocation.lat.toFixed(4)}°N, ${exifLocation.lon.toFixed(4)}°E`,
         });
         metadataInfo += `\nGPS-Koordinaten aus EXIF: ${exifLocation.lat.toFixed(4)}°N, ${exifLocation.lon.toFixed(4)}°E`;
 
-        const geocoded = await reverseGeocode(
-          exifLocation.lat,
-          exifLocation.lon,
+        const geocoded = await resolveDeviceLocation(
+          exifLocation,
+          abortController.signal,
+          undefined,
+          (input, signal) => detectLocation(input, anthropic, signal),
+          "photo",
         );
         if (geocoded) {
           sendSSE({ location: geocoded });
           exifLocationName =
             geocoded.cityName || geocoded.displayName.split(",")[0].trim();
           exifCountryCode = geocoded.countryCode || null;
+          exifSailingArea = geocoded.sailingArea || null;
           metadataInfo += `\nOrt: ${geocoded.displayName}`;
         }
       }
@@ -1342,6 +1348,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
             time: exifTime,
             locationName: exifLocationName,
             countryCode: exifCountryCode,
+            sailingArea: exifSailingArea,
           },
         });
       } else {
@@ -1350,6 +1357,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
             time: exifTime,
             locationName: exifLocationName,
             countryCode: exifCountryCode,
+            sailingArea: exifSailingArea,
           },
         });
       }
@@ -1684,7 +1692,8 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       const userInput = classification.location;
       if (deviceCoordinates) sendSSE({ loadingStatus: "Ermittle Ortsnamen für deinen Standort" });
       const deviceLocation = deviceCoordinates
-        ? await resolveDeviceLocation(deviceCoordinates, abortController.signal)
+        ? await resolveDeviceLocation(deviceCoordinates, abortController.signal, undefined,
+          (input, signal) => detectLocation(input, anthropic, signal))
         : null;
       if (clientGone) return;
       const cached = deviceCoordinates || resolveSailingAreaAlias(userInput)
@@ -1696,6 +1705,14 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       let countryCode: string;
 
       if (deviceLocation) {
+        if (deviceLocation.sailingArea) {
+          sailingAreaObj = {
+            name_de: deviceLocation.sailingArea,
+            type: deviceLocation.type === "sea" ? "sea" : "lake",
+            // Revier identity supplies context/model/warnings, never a substitute GPS point.
+            coordinates: { lat: deviceLocation.lat, lon: deviceLocation.lon },
+          };
+        }
         cityObj = {
           name_de: deviceLocation.cityName!,
           coordinates: { lat: deviceLocation.lat, lon: deviceLocation.lon },

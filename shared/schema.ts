@@ -39,7 +39,7 @@ export interface GeocodeResult {
   country?: string;
   location?: string;
   userInput?: string;
-  source?: "device";
+  source?: "device" | "photo";
 }
 
 export interface WeatherEuropeSSE {
