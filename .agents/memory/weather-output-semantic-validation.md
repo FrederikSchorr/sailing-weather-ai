@@ -37,9 +37,9 @@ Every numeric forecast wind value is a sustained-wind/gust pair, and every direc
 
 National warning blocks may contain official continuation lines, but only their first bullet counts as the single warning status. A repeated warning clause inside a dated forecast must be removed without deleting that forecast row.
 
-**Why:** Official multiline warnings were miscounted as duplicate statuses, while an embedded DHMZ clause caused an otherwise valid Today row to be discarded and shifted all later dates forward.
+**Why:** Official multiline warnings were miscounted as duplicate statuses, while an embedded DHMZ clause caused an otherwise valid Today row to be discarded and shifted all later dates forward. A multiline HNMS bulletin flattened to one display bullet also caused a valid Athens forecast to fail three times when validation still subtracted the original source line count.
 
-**How to apply:** Distinguish physical warning lines from warning bullets, recognize relative and calendar-prefixed forecast rows before cleanup, and strip only redundant warning clauses from those rows.
+**How to apply:** Count rendered warning bullets after normalization, not original source lines. Recognize relative and calendar-prefixed forecast rows before cleanup, and strip only redundant warning clauses from those rows.
 
 Required short sections must remain substantive after icon and clause normalization. A symbol-only bullet is incomplete even if the expected line count is present.
 
@@ -53,8 +53,8 @@ When Today starts at the current full hour but the request was made later in tha
 
 **How to apply:** Normalize only an `ab` boundary in the current hour to “ab jetzt”; continue rejecting references to earlier hours and completed day periods.
 
-Count rendered warning bullets, not lines in the original national bulletin. Preserve independently validated interpretations and authoritative warnings if other sections still fail after the correction limit; never present rejected model prose as valid.
+Preserve independently validated interpretations and authoritative warnings if other sections still fail after the correction limit; never present rejected model prose as valid.
 
-**Why:** A multiline HNMS bulletin became one display bullet, but the validator still subtracted its original line count. A valid Athens forecast was repeatedly rejected; a truthy but empty output object then hid the terminal error.
+**Why:** Rejecting one section previously discarded every generated interpretation. A truthy but empty output object then hid the terminal error, leaving only charts with no explanation.
 
-**How to apply:** Keep formatting and validation consistent about warning cardinality. Deliver verified partial results with an explicit failure status and show the error even when charts, exports, or partial interpretations already exist.
+**How to apply:** Deliver verified partial results with an explicit failure status and show the error even when charts, exports, or partial interpretations already exist.
