@@ -6,6 +6,8 @@ import { resolveDeviceLocation } from "./device-location";
 import OpenAI from "openai";
 import multer from "multer";
 import exifParser from "exif-parser";
+import { readPhotoMetadata } from "./photo-metadata";
+import { convertHeicToJpeg } from "./heic-image";
 import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
@@ -109,7 +111,7 @@ function detectMagicMimeType(buf: Buffer): string | null {
       buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
   if (buf.length >= 12 && buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) {
     const brand = buf.slice(8, 12).toString("ascii").toLowerCase();
-    if (["heic", "mif1", "heif", "msf1"].some(b => brand.startsWith(b))) return "image/heic";
+    if (["heic", "heix", "hevc", "hevx", "mif1", "heif", "msf1"].some(b => brand.startsWith(b))) return "image/heic";
     return "video/mp4";
   }
   if (buf[0] === 0x1A && buf[1] === 0x45 && buf[2] === 0xDF && buf[3] === 0xA3) return "video/webm";
@@ -1267,6 +1269,9 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       let exifLocation: { lat: number; lon: number } | null = null;
       let exifTime: string | null = null;
       let videoThumbnailBase64: string | null = null;
+      let photoThumbnailBase64: string | null = null;
+      let imageBuffer = fileBuffer;
+      let imageMime = detectedMime;
 
       if (isVideo) {
         const [thumbResult, metaResult] = await Promise.all([
@@ -1276,10 +1281,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
         videoThumbnailBase64 = thumbResult;
         if (metaResult.gps) exifLocation = metaResult.gps;
         if (metaResult.time) exifTime = metaResult.time;
-      } else if (
-        detectedMime === "image/jpeg" ||
-        detectedMime === "image/png"
-      ) {
+      } else if (detectedMime === "image/jpeg") {
         try {
           const parser = exifParser.create(fileBuffer);
           const exifData = parser.parse();
@@ -1306,6 +1308,27 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
           }
         } catch (e) {
           console.log("EXIF parsing failed (non-critical):", e);
+        }
+      } else {
+        const metadata = readPhotoMetadata(fileBuffer);
+        exifLocation = metadata.gps;
+        exifTime = metadata.time;
+      }
+
+      if (detectedMime === "image/heic") {
+        sendSSE({ status: "Konvertiere HEIC-Foto für die Bildanalyse…" });
+        try {
+          imageBuffer = await convertHeicToJpeg(fileBuffer, abortController.signal);
+          imageMime = "image/jpeg";
+          photoThumbnailBase64 = imageBuffer.toString("base64");
+        } catch (error) {
+          if (!clientGone) {
+            sendSSE({ error: error instanceof Error ? error.message : "Das HEIC-Foto konnte nicht verarbeitet werden." });
+            sendSSE({ done: true });
+            res.end();
+          }
+          try { fs.unlinkSync(filePath); } catch {}
+          return;
         }
       }
 
@@ -1354,6 +1377,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       } else {
         sendSSE({
           exifMeta: {
+            thumbnailBase64: photoThumbnailBase64,
             time: exifTime,
             locationName: exifLocationName,
             countryCode: exifCountryCode,
@@ -1469,7 +1493,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
       } else {
         sendSSE({ status: "🔍 Analysiere Bild mit KI..." });
 
-        const base64Image = fileBuffer.toString("base64");
+        const base64Image = imageBuffer.toString("base64");
 
         const imageMessages: OpenAI.ChatCompletionMessageParam[] = [
           {
@@ -1482,7 +1506,7 @@ STIL: Deutsch, sachlich, ohne Wiederholungen.`;
               {
                 type: "image_url",
                 image_url: {
-                  url: `data:${detectedMime};base64,${base64Image}`,
+                  url: `data:${imageMime};base64,${base64Image}`,
                   detail: "high",
                 },
               },

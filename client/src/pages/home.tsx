@@ -1007,7 +1007,12 @@ export default function Home() {
               photoExifMeta = { locationName: data.exifMeta.locationName ?? null, countryCode: data.exifMeta.countryCode ?? null };
               setUploadPreviews(prev => ({
                 ...prev,
-                [userId]: { ...prev[userId], time: data.exifMeta.time, locationName: data.exifMeta.locationName, countryCode: data.exifMeta.countryCode, sailingArea: data.exifMeta.sailingArea }
+                [userId]: {
+                  ...prev[userId],
+                  ...(data.exifMeta.thumbnailBase64 ? { url: `data:image/jpeg;base64,${data.exifMeta.thumbnailBase64}` } : {}),
+                  time: data.exifMeta.time, locationName: data.exifMeta.locationName,
+                  countryCode: data.exifMeta.countryCode, sailingArea: data.exifMeta.sailingArea,
+                }
               }));
             }
             if (data.videoMeta) {

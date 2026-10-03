@@ -9,6 +9,8 @@ import exifParser from "exif-parser";
 import { Messages } from "@anthropic-ai/sdk/resources/messages/messages";
 import { Completions } from "openai/resources/chat/completions/completions";
 import { registerRoutes } from "../server/routes";
+import { gpsHeic, gpsWebp } from "./fixtures/photo-images";
+import { readPhotoMetadata } from "../server/photo-metadata";
 
 // A real EXIF GPS IFD, parsed by the production parser, not mocked metadata.
 function gpsJpeg(lat: number, lon: number) {
@@ -51,6 +53,7 @@ const originalDetect = Messages.prototype.create;
 const originalVision = Completions.prototype.create;
 let detectorCalls = 0;
 let imageCalls = 0;
+let lastImageUrl = "";
 let failDetection = false;
 globalThis.fetch = async input => {
   const url = new URL(String(input));
@@ -73,11 +76,12 @@ globalThis.fetch = async input => {
 (Completions.prototype as any).create = async (payload: any) => {
   imageCalls++;
   assert.equal(payload.messages[1].content[0].type, "image_url");
+  lastImageUrl = payload.messages[1].content[0].image_url.url;
   assert.match(payload.messages[0].content, /ausschließlich das vorliegende Bild/);
   assert.doesNotMatch(payload.messages[0].content, /Vorheriges Revier|Kvarner/);
   return { choices: [{ message: { content: "## Aufnahme\nTest-Wolkenbild." } }] };
 };
-async function runPhoto(name: string, bytes: Buffer, currentLocation?: unknown) {
+async function runPhoto(name: string, bytes: Buffer, currentLocation?: unknown, expectedError = false) {
   const filePath = path.join(directory, name);
   await writeFile(filePath, bytes);
   const req = Object.assign(new EventEmitter(), {
@@ -97,8 +101,8 @@ async function runPhoto(name: string, bytes: Buffer, currentLocation?: unknown) 
   await upload(req, res);
   assert.equal(res.statusCode, 200);
   assert.ok(res.events.some(event => event.done));
-  assert.ok(res.events.some(event => event.content));
-  assert.ok(!res.events.some(event => event.error));
+  assert.equal(res.events.some(event => event.content), !expectedError);
+  assert.equal(res.events.some(event => event.error), expectedError);
   await assert.rejects(access(filePath), { code: "ENOENT" });
   return res.events;
 }
@@ -146,6 +150,34 @@ try {
     lon: failedLookup.find(event => event.location).location.lon,
   }, point);
   assert.equal(imageCalls, 7, "an area failure must not block the cloud-photo analysis");
+  failDetection = false;
+  for (const [name, bytes] of [
+    ["gallery.webp", gpsWebp(47.924567891, 16.864567891)],
+    ["camera.heic", gpsHeic(47.924567891, 16.864567891)],
+  ] as const) {
+    const expected = readPhotoMetadata(bytes).gps;
+    assert.ok(expected, `${name} has real format-specific GPS metadata`);
+    const events = await runPhoto(name, bytes, previous);
+    const location = events.find(event => event.location).location;
+    assert.equal(location.sailingArea, "Neusiedler See (Österreich)");
+    assert.deepEqual({ lat: location.lat, lon: location.lon }, expected);
+    assert.deepEqual({ lat: location.cityLat, lon: location.cityLon }, expected);
+    assert.equal(location.source, "photo");
+    assert.equal(events.find(event => event.exifMeta).exifMeta.sailingArea, location.sailingArea);
+    if (name.endsWith(".heic")) {
+      const preview = Buffer.from(events.find(event => event.exifMeta).exifMeta.thumbnailBase64, "base64");
+      assert.equal(preview.subarray(0, 3).toString("hex"), "ffd8ff");
+      assert.equal(lastImageUrl, `data:image/jpeg;base64,${preview.toString("base64")}`,
+        "vision must receive converted JPEG, never unsupported HEIC bytes");
+    } else {
+      assert.equal(lastImageUrl, `data:image/webp;base64,${bytes.toString("base64")}`);
+    }
+  }
+  const damaged = Buffer.from(gpsHeic(47.924567891, 16.864567891).subarray(0, 24));
+  const callsBeforeDamaged = imageCalls;
+  const damagedEvents = await runPhoto("damaged.heic", damaged, undefined, true);
+  assert.match(damagedEvents.find(event => event.error).error, /HEIC/);
+  assert.equal(imageCalls, callsBeforeDamaged, "unconvertible HEIC must not reach the image model");
 } finally {
   globalThis.fetch = originalFetch;
   Messages.prototype.create = originalDetect;

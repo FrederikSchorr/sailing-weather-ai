@@ -33,6 +33,12 @@ Photo/video GPS describes the recording location, not necessarily the user's cur
 
 **How to apply:** Recognise sailing areas from genuine recording coordinates, distinguish them from a live device position, and keep cloud-image interpretation independent of external forecast context.
 
+Read recording metadata before normalising HEIC to JPEG. The converted JPEG is only a compatibility image for vision and preview; it must not replace the original recording provenance.
+
+**Why:** The vision interface does not accept HEIC, and conversion strips its GPS metadata. Using the converted bytes for location discovery would silently lose the sailing area again.
+
+**How to apply:** Retain metadata from the original upload and keep CPU-heavy image conversion outside the shared request-handling thread, so other weather requests remain responsive.
+
 For national warning feeds, an explicitly empty warning field or provider-specific “none” marker is a checked all-clear; missing/malformed fields remain unavailable. Never send empty warning text to an LLM or accept its meta-response as a warning.
 
 **Why:** DHMZ returned an empty regional warning plus “Nema.” in its alternate feed; translating the empty field produced an English request for input that was then displayed as an official warning.
