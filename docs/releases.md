@@ -6,7 +6,11 @@
    Korrekturversion: beispielsweise `2.3.0` → `2.3.1` → `2.3.2`.
 2. `npm run test:release`, `npm run check` und `npm run build` ausführen.
 3. Die vorbereiteten Änderungen einschließlich `shared/release.json`,
-   `package.json` und `package-lock.json` zusammen committen.
+   `package.json` und `package-lock.json` zusammen committen. Die Nachricht des
+   manuellen Release-Commits enthält immer die Versionsnummer, beispielsweise:
+   `release(v2.4.2): Orts- und Revierkoordinaten bei Standort- und Fotoanalyse trennen`.
+   So ist die Version direkt in der Commit-Historie nachvollziehbar. Automatisch
+   erzeugte Replit-Checkpoint-/Publish-Titel ersetzen diese Konvention nicht.
 4. Optional den geprüften Commit mit `npm run release:tag` lokal kennzeichnen
    und den Tag nach bewusster Bestätigung übertragen (siehe unten).
 5. Über **Publish** veröffentlichen. Ein Tag veröffentlicht die App nicht.
